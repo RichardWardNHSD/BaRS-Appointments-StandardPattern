@@ -13,6 +13,12 @@ Retrieve an existing Appointment resource from the receiving system. This is req
 GET /Appointment/{id}
 ```
 
+## Prerequisites
+
+**Before calling any API on a target service for the first time**, you must call `GET /metadata` to retrieve the receiver's CapabilityStatement and confirm it supports the view operation. See the [README](./README.md#get-metadata--capability-check) for details. This only needs to be done once per target service.
+
+**Read before write**: If you are viewing the appointment as a prerequisite to an update, cancel, or reschedule, you are already fulfilling the read-before-write rule.
+
 ## When to Use
 
 - Checking the status of a previously made booking

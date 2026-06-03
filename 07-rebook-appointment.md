@@ -20,6 +20,11 @@ This is not a single API call. It is a combination of:
 | Existing booking needs multiple changes beyond just slot | Use Rebook (this page) |
 | Booking was made in error and patient needs a fresh one | Use Rebook (this page) |
 
+## Prerequisites
+
+1. **Confirm BaRS Capabilities (first interaction only)** – Call `GET /metadata` on the target service(s) to verify they support the required operations (cancel on the existing service, booking on the new service). This only needs to be done once per target service. See the [README](./README.md#get-metadata--capability-check) for details.
+2. The individual steps (Cancel and Book) each have their own prerequisites — see [Cancel Appointment](./05-cancel-appointment.md) and [Book Appointment](./02-book-appointment.md).
+
 ## Workflow
 
 ### Step 1: Cancel the Existing Appointment

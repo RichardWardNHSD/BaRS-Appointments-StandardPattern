@@ -12,7 +12,8 @@ PUT /Appointment/{id}
 
 ## Prerequisites
 
-**Read before write**: You must first perform a [GET /Appointment/{id}](./03-view-appointment.md) to retrieve the current resource.
+1. **Confirm BaRS Capabilities (first interaction only)** – Call `GET /metadata` on the target service to verify it supports cancellation. This only needs to be done once per target service. See the [README](./README.md#get-metadata--capability-check) for details.
+2. **Read before write**: You must first perform a [GET /Appointment/{id}](./03-view-appointment.md) to retrieve the current resource.
 
 ## Request
 

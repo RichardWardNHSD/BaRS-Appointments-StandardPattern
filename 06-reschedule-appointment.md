@@ -12,8 +12,9 @@ PATCH /Appointment/{id}
 
 ## Prerequisites
 
-1. **Read before write**: [GET /Appointment/{id}](./03-view-appointment.md) to retrieve the current resource.
-2. **Get new slots**: [GET /Slot](./01-get-slots.md) to find an alternative available slot.
+1. **Confirm BaRS Capabilities (first interaction only)** – Call `GET /metadata` on the target service to verify it supports the reschedule (PATCH) operation. This only needs to be done once per target service. See the [README](./README.md#get-metadata--capability-check) for details.
+2. **Read before write**: [GET /Appointment/{id}](./03-view-appointment.md) to retrieve the current resource.
+3. **Get new slots**: [GET /Slot](./01-get-slots.md) to find an alternative available slot.
 
 ## Request
 
