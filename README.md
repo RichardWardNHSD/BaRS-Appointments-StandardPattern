@@ -39,9 +39,9 @@ The following identifiers are used consistently across all examples:
 
 Before using these APIs, ensure you have:
 
-- Completed [BaRS Proxy onboarding](../current-onboarding-process.md) (Sender and/or Receiver)
-- A valid OAuth bearer token (application-restricted, signed JWT)
-- Selected a target service via [Service Discovery](https://simplifier.net/guide/nhsbookingandreferralstandard/Home/Core/1-4-1/End-to-end-workflow/Service-Discovery?version=1.11.1)
+- **If using the BaRS Proxy**: Completed [BaRS Proxy onboarding](../current-onboarding-process.md) (Sender and/or Receiver). *The Proxy is optional — teams may implement the Standard Pattern directly between systems without it. See [Internal Onboarding Guide, Option B](../internal-onboarding-standard-pattern.md#option-b-standard-only-no-proxy) for details.*
+- A valid OAuth bearer token (application-restricted, signed JWT) — or equivalent authentication if not using the Proxy
+- Selected a target service via [Service Discovery](https://simplifier.net/guide/nhsbookingandreferralstandard/Home/Core/1-4-1/End-to-end-workflow/Service-Discovery?version=1.11.1) (or your own service resolution mechanism if not using the Proxy)
 - Called `GET /metadata` on the target service to confirm its capabilities (see below)
 
 ### GET /metadata – Capability Check
@@ -65,7 +65,7 @@ GET https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/metadata
 | `NHSD-Target-Identifier` | Base64-encoded JSON (service: `2000072489`) |
 | `Accept` | `application/fhir+json` |
 
-The response is a FHIR CapabilityStatement describing the target receiver's supported resources, interactions, and message definitions. If the receiver does not support BaRS functionality, the Proxy will return an error — in which case, you should pursue an alternative workflow.
+The response is a FHIR CapabilityStatement describing the target receiver's supported resources, interactions, and message definitions. If using the BaRS Proxy and the receiver does not support BaRS functionality, the Proxy will return an error — in which case, you should pursue an alternative workflow.
 
 > **Key point**: Do not proceed with any of the operations below until you have confirmed the target supports them via `/metadata`.
 
@@ -73,5 +73,5 @@ The response is a FHIR CapabilityStatement describing the target receiver's supp
 
 - **Read before write**: All PUT and PATCH operations must be preceded by a GET of the resource.
 - **Headers are mandatory**: Every request must include `X-Request-Id`, `X-Correlation-Id`, and `NHSD-End-User-Organisation-ODS`.
-- **NHSD-Target-Identifier**: Required for all requests routed via the BaRS Proxy (Base64-encoded JSON identifying the target service).
+- **NHSD-Target-Identifier**: Required when requests are routed via the BaRS Proxy (Base64-encoded JSON identifying the target service). Not required if communicating directly with a receiver without the Proxy.
 - **The Appointment profile**: All Appointment resources must conform to [UKCore-Appointment](https://simplifier.net/HL7FHIRUKCoreR4/UKCore-Appointment).
