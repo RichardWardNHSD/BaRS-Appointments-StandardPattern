@@ -72,8 +72,7 @@ The response is a FHIR CapabilityStatement describing the target receiver's supp
 ## Key Rules
 
 - **Read before write**: All PUT and PATCH operations must be preceded by a GET of the resource.
-- **Headers are mandatory**: Every request must include `X-Request-Id`, `X-Correlation-Id`, and `NHSD-End-User-Organisation-ODS`.
-- **NHSD-Target-Identifier**: Required when requests are routed via the BaRS Proxy (Base64-encoded JSON identifying the target service). Not required if communicating directly with a receiver without the Proxy.
+- **Headers are mandatory**: Every request must include `X-Request-Id`, `X-Correlation-Id`, `NHSD-End-User-Organisation-ODS`and `NHSD-Target-Identifier`.
 - **The Appointment profile**: All Appointment resources must conform to [UKCore-Appointment](https://simplifier.net/HL7FHIRUKCoreR4/UKCore-Appointment).
 
 ## Internal Integrations (NHS-to-NHS, No Proxy)
@@ -123,7 +122,7 @@ Base64-encode this and include it in the header as normal.
 
 When operating in a direct (non-Proxy) integration:
 
-- The Receiver **should accept** these headers without validation against external systems (no Endpoint Catalogue lookup, no ODS ownership check).
+- The Receiver **should accept** these headers without validation against external systems (`NHSD-End-User-Organisation-ODS`and `NHSD-Target-Identifier`).
 - The Receiver **may log** the header values for audit/tracing purposes.
 - The Receiver **must not reject** requests solely because the header values don't resolve to real Proxy-registered entities.
 
