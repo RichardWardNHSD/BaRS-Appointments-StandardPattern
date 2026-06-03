@@ -42,7 +42,32 @@ Before using these APIs, ensure you have:
 - Completed [BaRS Proxy onboarding](../current-onboarding-process.md) (Sender and/or Receiver)
 - A valid OAuth bearer token (application-restricted, signed JWT)
 - Selected a target service via [Service Discovery](https://simplifier.net/guide/nhsbookingandreferralstandard/Home/Core/1-4-1/End-to-end-workflow/Service-Discovery?version=1.11.1)
-- Confirmed capabilities via `GET /metadata`
+- Called `GET /metadata` on the target service to confirm its capabilities (see below)
+
+### GET /metadata – Capability Check
+
+Before your **first API interaction** with a target service, you must call `GET /metadata` to retrieve its [CapabilityStatement](https://www.hl7.org/fhir/capabilitystatement.html). This tells you what the receiver supports — which interactions, which resource types, and which message definitions are available.
+
+You only need to do this **once per target service** (not before every individual call). Cache the result and use it to confirm the receiver supports the operations you intend to perform.
+
+```
+GET https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/metadata
+```
+
+**Headers:**
+
+| Header | Value |
+|---|---|
+| `Authorization` | `Bearer {access_token}` |
+| `X-Request-Id` | `{uuid}` |
+| `X-Correlation-Id` | `{uuid}` |
+| `NHSD-End-User-Organisation` | Base64-encoded JSON (ODS: `RYG`) |
+| `NHSD-Target-Identifier` | Base64-encoded JSON (service: `2000072489`) |
+| `Accept` | `application/fhir+json` |
+
+The response is a FHIR CapabilityStatement describing the target receiver's supported resources, interactions, and message definitions. If the receiver does not support BaRS functionality, the Proxy will return an error — in which case, you should pursue an alternative workflow.
+
+> **Key point**: Do not proceed with any of the operations below until you have confirmed the target supports them via `/metadata`.
 
 ## Key Rules
 

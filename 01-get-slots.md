@@ -10,6 +10,10 @@ Search for available booking slots from a specified receiving system. This is th
 GET /Slot
 ```
 
+## Prerequisites
+
+> **Before calling any API on a target service for the first time**, you must call `GET /metadata` to retrieve the receiver's CapabilityStatement and confirm it supports slot queries and booking. See the [README](./README.md#get-metadata--capability-check) for details. This only needs to be done once per target service — not before every slot search.
+
 ## When to Use
 
 - Before making an initial booking (see [Book Appointment](./02-book-appointment.md))

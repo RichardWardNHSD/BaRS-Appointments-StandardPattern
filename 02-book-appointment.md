@@ -12,8 +12,8 @@ POST /Appointment
 
 ## Prerequisites
 
-1. [Get Slots](./01-get-slots.md) – You must have searched for and selected an available slot.
-2. Confirm BaRS Capabilities – `GET /metadata` to verify the receiver supports booking.
+1. **Confirm BaRS Capabilities (first interaction only)** – Call `GET /metadata` on the target service to verify it supports booking. This only needs to be done once per target service. See the [README](./README.md#get-metadata--capability-check) for details.
+2. [Get Slots](./01-get-slots.md) – You must have searched for and selected an available slot.
 
 ## Request
 
