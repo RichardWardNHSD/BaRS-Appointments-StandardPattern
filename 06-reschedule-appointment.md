@@ -51,6 +51,8 @@ PATCH https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/Appointment/ac
 | `Content-Type` | `application/fhir+json` |
 | `Accept` | `application/fhir+json` |
 
+> **Internal integrations**: For NHS-to-NHS direct integrations (no Proxy), `NHSD-End-User-Organisation` and `NHSD-Target-Identifier` still need to be present but carry dummy/placeholder values. See the [README – Internal Integrations](./README.md#internal-integrations-nhs-to-nhs-no-proxy) section.
+
 #### Request Body
 
 The full Appointment resource with **only** the `.slot` (and corresponding `.start`/`.end`) updated to the new slot. No other elements should be changed.

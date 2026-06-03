@@ -23,7 +23,7 @@ POST /Appointment
 POST https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/Appointment
 ```
 
-### Headers
+#### Headers
 
 | Header | Value |
 |---|---|
@@ -34,6 +34,8 @@ POST https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/Appointment
 | `NHSD-Target-Identifier` | Base64-encoded JSON (service: `2000072489`) |
 | `Content-Type` | `application/fhir+json` |
 | `Accept` | `application/fhir+json` |
+
+> **Internal integrations**: For NHS-to-NHS direct integrations (no Proxy), `NHSD-End-User-Organisation` and `NHSD-Target-Identifier` still need to be present but carry dummy/placeholder values. See the [README – Internal Integrations](./README.md#internal-integrations-nhs-to-nhs-no-proxy) section.
 
 ### Request Body
 

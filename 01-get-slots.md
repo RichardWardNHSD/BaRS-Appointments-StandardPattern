@@ -48,6 +48,8 @@ GET https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/Slot?Schedule.ac
 | `NHSD-Target-Identifier` | Base64-encoded JSON (see below) |
 | `Accept` | `application/fhir+json` |
 
+> **Internal integrations**: For NHS-to-NHS direct integrations (no Proxy), these headers still need to be present but carry dummy/placeholder values. See the [README – Internal Integrations](./README.md#internal-integrations-nhs-to-nhs-no-proxy) section for guidance on what values to use.
+
 #### NHSD-End-User-Organisation (decoded)
 
 ```json

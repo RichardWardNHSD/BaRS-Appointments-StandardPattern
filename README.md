@@ -75,3 +75,56 @@ The response is a FHIR CapabilityStatement describing the target receiver's supp
 - **Headers are mandatory**: Every request must include `X-Request-Id`, `X-Correlation-Id`, and `NHSD-End-User-Organisation-ODS`.
 - **NHSD-Target-Identifier**: Required when requests are routed via the BaRS Proxy (Base64-encoded JSON identifying the target service). Not required if communicating directly with a receiver without the Proxy.
 - **The Appointment profile**: All Appointment resources must conform to [UKCore-Appointment](https://simplifier.net/HL7FHIRUKCoreR4/UKCore-Appointment).
+
+## Internal Integrations (NHS-to-NHS, No Proxy)
+
+For internal integrations where NHS systems communicate directly without the BaRS Proxy, the `NHSD-End-User-Organisation` and `NHSD-Target-Identifier` headers are **still included** in requests to maintain conformance with the standard, but they carry **dummy/placeholder values** since they are not used for routing or authorisation in this context.
+
+This ensures:
+- The API contract remains consistent regardless of whether the Proxy is in the path.
+- Systems can transition to Proxy-routed traffic in the future without code changes to the request structure.
+- Receivers can be built once and work in both Proxy and direct integration scenarios.
+
+### Dummy Header Values for Internal Integrations
+
+#### NHSD-End-User-Organisation (dummy)
+
+Use a valid structure with your own ODS code (or a placeholder if ODS codes are not relevant to your integration):
+
+```json
+{
+  "resourceType": "Organization",
+  "identifier": [
+    {
+      "system": "https://fhir.nhs.uk/Id/ods-organization-code",
+      "value": "X26"
+    }
+  ],
+  "name": "NHS England"
+}
+```
+
+Base64-encode this and include it in the header as normal.
+
+#### NHSD-Target-Identifier (dummy)
+
+Use a valid structure with a locally-agreed service identifier (this does not need to exist in the Endpoint Catalogue since routing is handled directly):
+
+```json
+{
+  "system": "https://fhir.nhs.uk/Id/dos-service-id",
+  "value": "INTERNAL-001"
+}
+```
+
+Base64-encode this and include it in the header as normal.
+
+### What the Receiver Should Do
+
+When operating in a direct (non-Proxy) integration:
+
+- The Receiver **should accept** these headers without validation against external systems (no Endpoint Catalogue lookup, no ODS ownership check).
+- The Receiver **may log** the header values for audit/tracing purposes.
+- The Receiver **must not reject** requests solely because the header values don't resolve to real Proxy-registered entities.
+
+> **Tip**: Agree the dummy values between Sender and Receiver teams upfront and document them in your integration specification. The examples in this guide use `RYG` and `2000072489` — for internal integrations, substitute with your agreed placeholders.

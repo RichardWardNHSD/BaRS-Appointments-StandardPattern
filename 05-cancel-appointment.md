@@ -42,6 +42,8 @@ PUT https://int.api.service.nhs.uk/booking-and-referral/FHIR/R4/Appointment/aca9
 | `Content-Type` | `application/fhir+json` |
 | `Accept` | `application/fhir+json` |
 
+> **Internal integrations**: For NHS-to-NHS direct integrations (no Proxy), `NHSD-End-User-Organisation` and `NHSD-Target-Identifier` still need to be present but carry dummy/placeholder values. See the [README – Internal Integrations](./README.md#internal-integrations-nhs-to-nhs-no-proxy) section.
+
 #### Request Body – Standard Cancellation
 
 Set `.status` to `cancelled`. You may also update `.reasonCode` to indicate why.

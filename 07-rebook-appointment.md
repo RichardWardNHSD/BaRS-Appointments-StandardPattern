@@ -204,6 +204,8 @@ The new Appointment ID is `f8c3de3d-1729-4b67-8f1a-2c9d4e5f6a7b`. The Receiver m
 | `Content-Type` | `application/fhir+json` (for POST/PUT) |
 | `Accept` | `application/fhir+json` |
 
+> **Internal integrations**: For NHS-to-NHS direct integrations (no Proxy), `NHSD-End-User-Organisation` and `NHSD-Target-Identifier` still need to be present but carry dummy/placeholder values. See the [README – Internal Integrations](./README.md#internal-integrations-nhs-to-nhs-no-proxy) section.
+
 > **Note**: The `X-Correlation-Id` should remain the same across both the cancel and the new booking to allow the full rebook flow to be traced as a single logical operation.
 
 ## Error Handling
