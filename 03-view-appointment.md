@@ -115,7 +115,53 @@ If the Appointment `id` is not known, you can search by patient demographics:
 GET /Appointment?patient:identifier=https://fhir.nhs.uk/Id/nhs-number|9876543210
 ```
 
-This returns a Bundle of matching Appointments.
+This returns a Bundle of matching Appointments:
+
+```json
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 1,
+  "entry": [
+    {
+      "fullUrl": "https://receiver.nhs.uk/FHIR/R4/Appointment/aca94bdb-2e38-4399-9ece-2ba083ce65b5",
+      "resource": {
+        "resourceType": "Appointment",
+        "id": "aca94bdb-2e38-4399-9ece-2ba083ce65b5",
+        "meta": {
+          "lastUpdated": "2025-02-10T09:15:30.818+00:00",
+          "profile": [
+            "https://fhir.hl7.org.uk/StructureDefinition/UKCore-Appointment"
+          ]
+        },
+        "status": "booked",
+        "slot": [
+          {
+            "reference": "Slot/deb4c4b3-870b-4599-84df-5e54cef7afda"
+          }
+        ],
+        "description": "Patient reported nosebleed without injury",
+        "start": "2025-02-12T12:30:00+00:00",
+        "end": "2025-02-12T12:40:00+00:00",
+        "created": "2025-02-10T09:15:00+00:00",
+        "participant": [
+          {
+            "actor": {
+              "reference": "Patient/788660eb-d2c9-4773-abd4-318484673fb2",
+              "identifier": {
+                "system": "https://fhir.nhs.uk/Id/nhs-number",
+                "value": "9876543210"
+              },
+              "display": "John Smith"
+            },
+            "status": "accepted"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
 
 ### Error Responses
 
