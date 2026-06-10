@@ -41,8 +41,26 @@ Before using these APIs, ensure you have:
 
 - **If using the BaRS Proxy**: Completed [BaRS Proxy onboarding](../current-onboarding-process.md) (Sender and/or Receiver). *The Proxy is optional — teams may implement the Standard Pattern directly between systems without it. See [Internal Onboarding Guide, Option B](../internal-onboarding-standard-pattern.md#option-b-standard-only-no-proxy) for details.*
 - A valid OAuth bearer token (application-restricted, signed JWT) — or equivalent authentication if not using the Proxy
-- Selected a target service via [Service Discovery](https://simplifier.net/guide/nhsbookingandreferralstandard/Home/Core/1-4-1/End-to-end-workflow/Service-Discovery?version=1.11.1) (or your own service resolution mechanism if not using the Proxy)
-- Called `GET /metadata` on the target service to confirm its capabilities (see below)
+- **Selected a target service** via Service Discovery (see below)
+- Called `GET /metadata` on the target service to confirm its capabilities (see further below)
+
+### Service Search and Selection
+
+Before any API interaction can take place, you must identify **which service** you are interacting with. In the BaRS model, every request is directed at a specific healthcare service — you cannot call the API without knowing your target.
+
+**How service selection works:**
+
+1. A clinical or operational decision determines that a patient needs a booking at a particular type of service (e.g., an UTC, a pharmacy, a specialist clinic).
+2. A [Service Discovery](https://simplifier.net/guide/nhsbookingandreferralstandard/Home/Core/1-4-1/End-to-end-workflow/Service-Discovery?version=1.11.1) process is used to find available services matching the patient's need. This typically involves querying a directory (e.g., DoS) by specialty, location, availability, or other criteria.
+3. The selected service provides a **service identifier** (e.g., a DoS service ID) which is used in subsequent API calls — either as the `NHSD-Target-Identifier` header (if using the Proxy) or as a direct address (if calling the receiver directly).
+
+Without a selected service, none of the operations in this guide can be performed — there is no "broadcast" or "any available service" mode.
+
+> **Internal integrations (NHS-to-NHS, no Proxy):** For internal integrations where the Sender and Receiver are known at design time, the service search step can be replaced with **predefined or dummy service identifiers** agreed between the teams. There is no need to perform a runtime directory lookup if both parties already know each other's identity.
+>
+> For example, if Team A always sends bookings to Team B, they can agree a static service identifier (e.g., `INTERNAL-001`) and hard-code it in their configuration. This identifier is then used in the `NHSD-Target-Identifier` header (as a dummy value) and does not need to resolve in the Endpoint Catalogue or any directory.
+>
+> See the [Internal Integrations section](#internal-integrations-nhs-to-nhs-no-proxy) below for guidance on dummy header values.
 
 ### GET /metadata – Capability Check
 
