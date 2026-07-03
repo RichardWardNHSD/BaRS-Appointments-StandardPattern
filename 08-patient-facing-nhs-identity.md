@@ -40,9 +40,11 @@ For patient-facing BaRS, the minimum identity verification level is **P9 (High)*
 4. API calls include this user-restricted access token in the `Authorization` header.
 
 **Impact on the NHS API Platform and receivers:**
-- The **NHS API Platform** validates the user-restricted token at the gateway layer (token signature, expiry, scopes). This is not a Proxy function — it is handled by the API Platform itself.
-- The API Platform extracts the authenticated NHS Number from the token claims and makes it available to downstream systems (e.g., via a header or introspection response).
-- The **Receiver** must additionally validate that the patient context in the request body matches the authenticated identity. The receiver is responsible for enforcing that the patient can only interact with their own resources — this cannot be solely delegated to the API Platform.
+- The **NHS API Platform Authorisation Server** issues a user-restricted access token containing claims that identify the patient (`sub` = patient's NHS Number) and the actor (`act` = the logged-in user, relevant for delegated/proxy access).
+- The API Platform does **not** extract the NHS Number and pass it downstream via a separate header. The claims are embedded within the access token itself.
+- The **Receiver** (API producer) must validate the access token and extract the `sub` claim to determine the patient's NHS Number. The receiver is then responsible for enforcing that the request only accesses resources belonging to that patient.
+
+> **Reference:** See [NHS API Producer Guidance (PXY-1)](https://nhsdigital.github.io/national-proxy-service-integration-docs/patient-facing-journeys/api-producer-guidance): "If a patient identifier is provided in the request route or query string, it must be verified against the `sub` claim in the access token."
 
 ### 2. Scoping and Consent
 
@@ -61,15 +63,15 @@ The patient must explicitly consent to these scopes during the NHS Identity logi
 
 **Current state:** The patient's NHS Number is included in the request body (e.g., in the `participant.actor.identifier` of a booking request). The system is trusted to supply the correct patient identity.
 
-**Required change:** In patient-facing mode, the patient identity is **derived from the access token**, not from the request body:
+**Required change:** In patient-facing mode, the patient identity is **derived from the access token claims**, not trusted from the request body:
 
-- The **NHS API Platform** extracts the NHS Number from the token claims and passes it downstream (e.g., as a verified header or claim).
-- The **Receiver** must validate that the NHS Number in the request body matches the authenticated identity provided by the API Platform. If the request body references a different patient, the receiver **must reject** the request (HTTP 403).
-- This prevents a patient from booking on behalf of another person (unless a delegated access model is introduced later).
+- The access token contains a `sub` claim holding the patient's NHS Number (and an `act` claim identifying the proxy/actor, if delegated access is in use).
+- The **Receiver** must validate the access token, extract the `sub` claim, and verify that any patient identifier in the request (URL, query string, or body) matches the `sub` claim. If there is a mismatch, the receiver **must reject** the request (HTTP 401 per NHS API Producer Guidance).
+- This prevents a patient from booking on behalf of another person (unless a delegated access model is in use, in which case the `act` claim identifies the proxy and `sub` identifies the patient they are acting for).
 
 **Validation rule:**
 ```
-token.nhs_number == request.body.participant[*].actor.identifier.value
+token.sub == request.body.participant[*].actor.identifier.value (NHS Number)
 ```
 
 ### 4. New / Modified Headers
@@ -177,10 +179,13 @@ When a patient cancels their own appointment:
 Systems that wish to accept patient-initiated bookings must:
 
 1. Declare patient-facing support in their `CapabilityStatement`.
-2. Validate that the patient identity in the request body matches the authenticated NHS Number provided by the API Platform (e.g., via a trusted header). Reject mismatches with HTTP 403.
-3. Enforce that the patient can only interact with their own resources (own-record-only access).
-4. Apply appropriate business rules (cancellation windows, slot limits, etc.).
-5. Return patient-appropriate error messages (no internal system details in OperationOutcome).
+2. Validate the user-restricted access token (signature, expiry, scopes).
+3. Extract the `sub` claim (patient NHS Number) and `act` claim (proxy identity, if applicable) from the token.
+4. Verify that any patient identifier in the request (URL, query string, or body) matches the `sub` claim. Reject mismatches with HTTP 401.
+5. Enforce that the patient can only interact with their own resources (own-record-only access).
+6. Apply appropriate business rules (cancellation windows, slot limits, etc.).
+7. Return patient-appropriate error messages (no internal system details in OperationOutcome).
+8. Audit both the patient (`sub`) and the actor (`act`) correctly — see [NHS API Producer Guidance PXY-4](https://nhsdigital.github.io/national-proxy-service-integration-docs/patient-facing-journeys/api-producer-guidance).
 
 ## Open Questions and Future Considerations
 
@@ -203,31 +208,29 @@ Systems that wish to accept patient-initiated bookings must:
 │  NHS Identity (P9)                                          │
 │       │                                                     │
 │       ▼                                                     │
-│  User-Restricted Token (OIDC + token exchange)              │
+│  Composite Identity Token (sub=patient, act=proxy)          │
 │       │                                                     │
 │       ▼                                                     │
-│  Patient-Facing App ──► NHS API Platform                    │
-│       │                        │                            │
-│       │                        ▼                            │
-│       │               Token validation (API Platform)       │
-│       │               NHS Number extraction                 │
-│       │               Scope enforcement                     │
-│       │                        │                            │
-│       │                        ▼                            │
-│       │               Receiver                              │
-│       │               ├─ Validates patient context           │
-│       │               │  (NHS Number in body matches        │
-│       │               │   authenticated identity)           │
-│       │               ├─ Enforces own-record-only access    │
-│       │               ├─ CapabilityStatement declares       │
-│       │               │  patient-facing support             │
-│       │               │                                     │
-│       │                        ▼                            │
-│       │               Appointment created/viewed/cancelled  │
-│       │               (patient's own record only)           │
+│  Token Exchange (NHS API Platform /oauth2/token)            │
 │       │                                                     │
 │       ▼                                                     │
-│  Audit: NHS Number + P9 level + app ID + consent scope      │
+│  User-Restricted Access Token (claims inside token)         │
+│       │                                                     │
+│       ▼                                                     │
+│  Patient-Facing App ──► Receiver (BaRS API)                 │
+│                                │                            │
+│                                ▼                            │
+│                       Receiver validates token              │
+│                       Extracts sub claim (NHS Number)       │
+│                       Matches sub against request body      │
+│                       Enforces own-record-only access       │
+│                       Audits sub + act                      │
+│                                │                            │
+│                                ▼                            │
+│                       Appointment created/viewed/cancelled  │
+│                       (patient's own record only)           │
+│                                                             │
+│  Audit: sub (patient) + act (proxy) + app ID + scopes      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -235,6 +238,6 @@ Systems that wish to accept patient-initiated bookings must:
 
 - Define the OAuth scope model with the NHS API Platform team.
 - Agree the CapabilityStatement extension for patient-facing support.
-- Design the patient-context enforcement rules at the API Platform layer and define what the receiver must validate.
+- Define receiver-side token validation and `sub` claim matching requirements for BaRS.
 - Identify pilot services willing to accept patient-initiated bookings.
 - Produce patient-facing error message guidance (plain English OperationOutcome display text).
