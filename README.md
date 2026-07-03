@@ -34,6 +34,7 @@ The following identifiers are used consistently across all examples:
 5. [Cancel Appointment](./05-cancel-appointment.md) – Cancel an existing booking
 6. [Reschedule Appointment](./06-reschedule-appointment.md) – Change the slot (PATCH)
 7. [Rebook Appointment](./07-rebook-appointment.md) – Cancel and create a new booking
+8. [Patient-Facing BaRS (NHS Identity)](./08-patient-facing-nhs-identity.md) – Requirements for citizen-initiated bookings via NHS Identity
 
 ## Prerequisites
 
