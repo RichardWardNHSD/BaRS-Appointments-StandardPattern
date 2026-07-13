@@ -368,21 +368,6 @@ Systems that wish to accept patient-initiated bookings must:
 
 ---
 
-## Comparison with Option 2 (No APIM Token Exchange — Rejected)
-
-For context, the alternative of having each PFA directly exchange tokens with each Receiver was considered and rejected (PFS D6):
-
-| Aspect | Option 1: APIM exchange (chosen) | Option 2: Direct PFA-to-Receiver (rejected) |
-|---|---|---|
-| PFA burden | Low — PFA only talks to APIM | High — PFA must onboard with every Receiver |
-| Receiver burden | Low — only one trusted origin (APIM) | High — must validate every PFA |
-| Oversight | NHS England has central visibility | Limited oversight |
-| Security | NHS England provides first line of defence | Each party manages their own security |
-| Development time | Standard | Increased |
-| Standards consistency | Guaranteed (APIM enforces) | Risk of non-standard mechanisms |
-
----
-
 ## Endpoint Catalogue — Receiver Auth and API Endpoints
 
 For patient-facing flows, the APIM proxy needs to discover **two** URLs for each Receiver:
