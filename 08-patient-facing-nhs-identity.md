@@ -41,7 +41,7 @@ sequenceDiagram
     participant APIMAuth as APIM Authorisation<br/>Service
     participant PFSProxy as APIM PFS/BaRS<br/>API Proxy
     participant TokenCache as APIM Token Cache
-    participant EPC as APIM Endpoint<br/>Catalogue Service
+    participant EPC as Endpoint<br/>Catalogue Service
     participant ReceiverAuth as Receiver AuthZ<br/>Server
     participant ReceiverAPI as Receiver API
 
@@ -60,7 +60,7 @@ sequenceDiagram
 
     Note over PFSProxy,EPC: Step 8-10: Endpoint lookup
     PFSProxy->>TokenCache: Get NHS login ID token for session
-    PFSProxy->>EPC: Lookup Receiver endpoint by ODS code
+    PFSProxy->>EPC: Lookup Receiver endpoint
     EPC-->>PFSProxy: Receiver endpoint URLs
 
     Note over PFSProxy,ReceiverAuth: Step 11-13: Token exchange with Receiver
@@ -92,7 +92,7 @@ Prior to step 1, the patient accesses the NHS App (or other PFA) and initiates l
 | 6 | PFA → BaRS API Proxy | PFA makes a request to the BaRS API proxy within APIM, including the APIM access token (in header) and the subject's NHS Number (in URL/body) |
 | 7 | Proxy validates | BaRS API proxy validates the APIM access token |
 | 8 | Proxy → Token Cache | Proxy retrieves the cached NHS login ID token for this session |
-| 9 | Proxy → Endpoint Service | Proxy looks up the Receiver's endpoint by ODS code (via Endpoint Catalogue) |
+| 9 | Proxy → Endpoint Service | Proxy looks up the Receiver's endpoint (via Endpoint Catalogue) |
 | 10 | Endpoint Service → Proxy | Returns Receiver endpoint URLs (including auth URL) |
 | 11 | Proxy → Receiver AuthZ | Proxy presents the NHS login ID token to the Receiver's authorisation server (via the Receiver's auth URL) |
 | 12 | Receiver AuthZ validates | Receiver's authorisation server validates the NHS login ID token with NHS login |
@@ -318,18 +318,288 @@ For context, the alternative of having each PFA directly exchange tokens with ea
 
 ---
 
+## Endpoint Catalogue — Receiver Auth and API Endpoints
+
+For patient-facing flows, the APIM proxy needs to discover **two** URLs for each Receiver:
+
+1. **The Receiver's authorisation server URL** — where APIM exchanges the NHS login ID token for a Receiver access token
+2. **The Receiver's BaRS API URL** — where APIM sends the proxied FHIR request
+
+These are modelled as separate `Endpoint` resources in the Endpoint Catalogue, distinguished by `connectionType` and `payloadType`.
+
+### Endpoint Resource Definitions
+
+#### Receiver Auth Endpoint
+
+| Field | Value |
+|-------|-------|
+| `connectionType.system` | `https://fhir.nhs.uk/CodeSystem/endpoint-connection-type` |
+| `connectionType.code` | `oauth2-token-exchange` |
+| `connectionType.display` | `OAuth 2.0 Token Exchange` |
+| `payloadType[0].coding[0].system` | `https://fhir.nhs.uk/CodeSystem/endpoint-payload-type` |
+| `payloadType[0].coding[0].code` | `urn:nhs:auth:token-exchange` |
+| `payloadType[0].coding[0].display` | `Token Exchange` |
+| `address` | The Receiver's authorisation server token endpoint URL |
+
+#### Receiver BaRS API Endpoint
+
+| Field | Value |
+|-------|-------|
+| `connectionType.system` | `http://terminology.hl7.org/CodeSystem/endpoint-connection-type` |
+| `connectionType.code` | `hl7-fhir-rest` |
+| `connectionType.display` | `HL7 FHIR REST` |
+| `payloadType[0].coding[0].system` | `https://fhir.nhs.uk/CodeSystem/endpoint-payload-type` |
+| `payloadType[0].coding[0].code` | `urn:nhs:bars:patient-facing-appointments` |
+| `payloadType[0].coding[0].display` | `BaRS Patient Facing Appointments` |
+| `address` | The Receiver's FHIR R4 API base URL |
+
+### Example: Querying the Endpoint Catalogue
+
+#### Step 1 — Resolve the Auth Endpoint
+
+The APIM proxy queries the Endpoint Catalogue to find the Receiver's token exchange URL, filtering by `connectionType` and `payloadType`:
+
+**Request:**
+
+```http
+GET /booking-and-referral/FHIR/R4/Endpoint?HealthcareService.Identifier=https://fhir.nhs.uk/Id/dos-service-id|2000072489&connectionType=https://fhir.nhs.uk/CodeSystem/endpoint-connection-type|oauth2-token-exchange&payloadType=https://fhir.nhs.uk/CodeSystem/endpoint-payload-type|urn:nhs:auth:token-exchange HTTP/1.1
+Host: api.service.nhs.uk
+Accept: application/fhir+json
+X-Request-Id: 74c2b045-9b7d-4b78-aeee-642f6332e3c9
+X-Correlation-Id: 0598efa7-fff0-4ade-9af8-3f46b4124151
+NHSD-End-User-Organisation: eyJyZXNvdXJjZVR5cGUiOi...
+```
+
+**Response:**
+
+```json
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 1,
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:auth-ep-medicus-prod",
+      "resource": {
+        "resourceType": "Endpoint",
+        "id": "auth-ep-medicus-prod",
+        "status": "active",
+        "connectionType": {
+          "system": "https://fhir.nhs.uk/CodeSystem/endpoint-connection-type",
+          "code": "oauth2-token-exchange",
+          "display": "OAuth 2.0 Token Exchange"
+        },
+        "payloadType": [
+          {
+            "coding": [
+              {
+                "system": "https://fhir.nhs.uk/CodeSystem/endpoint-payload-type",
+                "code": "urn:nhs:auth:token-exchange",
+                "display": "Token Exchange"
+              }
+            ]
+          }
+        ],
+        "address": "https://auth.medicus.thirdparty.nhs.uk/oauth2/token",
+        "managingOrganization": {
+          "identifier": {
+            "system": "https://fhir.nhs.uk/Id/ods-organization-code",
+            "value": "Y12345"
+          }
+        },
+        "name": "Medicus Production Auth Server"
+      }
+    }
+  ]
+}
+```
+
+#### Step 2 — Resolve the BaRS API Endpoint
+
+The APIM proxy queries the Endpoint Catalogue to find the Receiver's FHIR API URL:
+
+**Request:**
+
+```http
+GET /booking-and-referral/FHIR/R4/Endpoint?HealthcareService.Identifier=https://fhir.nhs.uk/Id/dos-service-id|2000072489&connectionType=http://terminology.hl7.org/CodeSystem/endpoint-connection-type|hl7-fhir-rest&payloadType=https://fhir.nhs.uk/CodeSystem/endpoint-payload-type|urn:nhs:bars:patient-facing-appointments HTTP/1.1
+Host: api.service.nhs.uk
+Accept: application/fhir+json
+X-Request-Id: 85d3c156-0e8f-5c89-bfff-753f7443f4da
+X-Correlation-Id: 0598efa7-fff0-4ade-9af8-3f46b4124151
+NHSD-End-User-Organisation: eyJyZXNvdXJjZVR5cGUiOi...
+```
+
+**Response:**
+
+```json
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 1,
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:api-ep-medicus-prod",
+      "resource": {
+        "resourceType": "Endpoint",
+        "id": "api-ep-medicus-prod",
+        "status": "active",
+        "connectionType": {
+          "system": "http://terminology.hl7.org/CodeSystem/endpoint-connection-type",
+          "code": "hl7-fhir-rest",
+          "display": "HL7 FHIR REST"
+        },
+        "payloadType": [
+          {
+            "coding": [
+              {
+                "system": "https://fhir.nhs.uk/CodeSystem/endpoint-payload-type",
+                "code": "urn:nhs:bars:patient-facing-appointments",
+                "display": "BaRS Patient Facing Appointments"
+              }
+            ]
+          }
+        ],
+        "address": "https://bars-prod.medicus.thirdparty.nhs.uk/FHIR/R4",
+        "managingOrganization": {
+          "identifier": {
+            "system": "https://fhir.nhs.uk/Id/ods-organization-code",
+            "value": "Y12345"
+          }
+        },
+        "name": "Medicus Production BaRS API"
+      }
+    }
+  ]
+}
+```
+
+### How the Proxy Uses Both Endpoints
+
+```mermaid
+sequenceDiagram
+    participant Proxy as APIM BaRS Proxy
+    participant EPC as Endpoint Catalogue
+    participant RecAuth as Receiver Auth Server
+    participant RecAPI as Receiver BaRS API
+
+    Note over Proxy,EPC: Resolve both endpoints for target service
+    Proxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|2000072489<br/>&connectionType=oauth2-token-exchange<br/>&payloadType=urn:nhs:auth:token-exchange
+    EPC-->>Proxy: Auth endpoint: https://auth.medicus.../oauth2/token
+
+    Proxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|2000072489<br/>&connectionType=hl7-fhir-rest<br/>&payloadType=urn:nhs:bars:patient-facing-appointments
+    EPC-->>Proxy: API endpoint: https://bars-prod.medicus.../FHIR/R4
+
+    Note over Proxy,RecAuth: Exchange NHS login token for Receiver token
+    Proxy->>RecAuth: POST /oauth2/token<br/>(NHS login ID token + client credentials)
+    RecAuth-->>Proxy: Receiver access token
+
+    Note over Proxy,RecAPI: Make the proxied API call
+    Proxy->>RecAPI: GET /Appointment/abc123<br/>(Authorization: Bearer {receiver-token})
+    RecAPI-->>Proxy: 200 OK — Appointment resource
+```
+
+### Alternative: Single Query with Multiple Results
+
+If the Endpoint Catalogue supports returning multiple endpoints for the same HealthcareService without filtering, the proxy could make a single query and filter by `connectionType` client-side:
+
+**Request:**
+
+```http
+GET /booking-and-referral/FHIR/R4/Endpoint?HealthcareService.Identifier=https://fhir.nhs.uk/Id/dos-service-id|2000072489 HTTP/1.1
+Host: api.service.nhs.uk
+Accept: application/fhir+json
+X-Request-Id: 96e4d267-1f9a-6d9a-caaa-864a8554a5eb
+X-Correlation-Id: 0598efa7-fff0-4ade-9af8-3f46b4124151
+NHSD-End-User-Organisation: eyJyZXNvdXJjZVR5cGUiOi...
+```
+
+**Response (Bundle with both endpoints):**
+
+```json
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 2,
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Endpoint",
+        "id": "auth-ep-medicus-prod",
+        "status": "active",
+        "connectionType": {
+          "system": "https://fhir.nhs.uk/CodeSystem/endpoint-connection-type",
+          "code": "oauth2-token-exchange",
+          "display": "OAuth 2.0 Token Exchange"
+        },
+        "payloadType": [
+          {
+            "coding": [
+              {
+                "system": "https://fhir.nhs.uk/CodeSystem/endpoint-payload-type",
+                "code": "urn:nhs:auth:token-exchange",
+                "display": "Token Exchange"
+              }
+            ]
+          }
+        ],
+        "address": "https://auth.medicus.thirdparty.nhs.uk/oauth2/token",
+        "name": "Medicus Production Auth Server"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Endpoint",
+        "id": "api-ep-medicus-prod",
+        "status": "active",
+        "connectionType": {
+          "system": "http://terminology.hl7.org/CodeSystem/endpoint-connection-type",
+          "code": "hl7-fhir-rest",
+          "display": "HL7 FHIR REST"
+        },
+        "payloadType": [
+          {
+            "coding": [
+              {
+                "system": "https://fhir.nhs.uk/CodeSystem/endpoint-payload-type",
+                "code": "urn:nhs:bars:patient-facing-appointments",
+                "display": "BaRS Patient Facing Appointments"
+              }
+            ]
+          }
+        ],
+        "address": "https://bars-prod.medicus.thirdparty.nhs.uk/FHIR/R4",
+        "name": "Medicus Production BaRS API"
+      }
+    }
+  ]
+}
+```
+
+The proxy then filters the Bundle entries:
+- `connectionType.code == "oauth2-token-exchange"` → auth URL
+- `connectionType.code == "hl7-fhir-rest"` → API URL
+
+### Summary of Endpoint Types
+
+| Purpose | `connectionType` | `payloadType` | Address contains |
+|---------|-----------------|---------------|-----------------|
+| **Token exchange** (auth) | `oauth2-token-exchange` | `urn:nhs:auth:token-exchange` | Receiver's OAuth2 token endpoint |
+| **BaRS API** (FHIR) | `hl7-fhir-rest` | `urn:nhs:bars:patient-facing-appointments` | Receiver's FHIR R4 base URL |
+
+---
+
 ## Open Questions and Future Considerations
 
-| Topic | Notes |
-|---|---|
-| **Delegated access** | Can a parent/guardian book on behalf of a child? Requires a delegation/proxy model (see National Proxy Service). |
-| **Notifications** | Should patients receive push/email/SMS on appointment status changes? |
-| **Waitlists** | If no slot is available, can the patient join a waitlist? Extends beyond current BaRS scope. |
-| **Multi-provider journeys** | Patient books at a service that then refers onwards — how does the patient retain visibility? |
-| **PDS linkage** | Should the API perform a PDS lookup to enrich the Appointment resource? |
-| **Accessibility** | PFAs must meet WCAG 2.2 AA. Error messages must be understandable by non-clinical users. |
-| **Receiver AuthZ server requirements** | Detailed specification needed for what claims/scopes Receiver AuthZ servers must support. |
-| **Token lifetime and refresh** | How long are Receiver access tokens valid? Does APIM handle refresh? |
+| Topic                                  | Notes                                                                                                            |
+| ----------------------------------------| ------------------------------------------------------------------------------------------------------------------|
+| **Delegated access**                   | Can a parent/guardian book on behalf of a child? Requires a delegation/proxy model (see National Proxy Service). |
+| **Notifications**                      | Should patients receive push/email/SMS on appointment status changes?                                            |
+| **Waitlists**                          | If no slot is available, can the patient join a waitlist? Extends beyond current BaRS scope.                     |
+| **Multi-provider journeys**            | Patient books at a service that then refers onwards — how does the patient retain visibility?                    |
+| **PDS linkage**                        | Should the API perform a PDS lookup to enrich the Appointment resource?                                          |
+| **Accessibility**                      | PFAs must meet WCAG 2.2 AA. Error messages must be understandable by non-clinical users.                         |
+| **Receiver AuthZ server requirements** | Detailed specification needed for what claims/scopes Receiver AuthZ servers must support.                        |
+| **Token lifetime and refresh**         | How long are Receiver access tokens valid? Does APIM handle refresh?                                             |
 
 ---
 
