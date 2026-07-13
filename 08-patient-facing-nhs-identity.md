@@ -82,22 +82,22 @@ sequenceDiagram
 
 Prior to step 1, the patient accesses the NHS App (or other PFA) and initiates login.
 
-| Step | Action | Description |
-|------|--------|-------------|
-| 1 | Patient enters credentials | Patient authenticates with NHS login (P9 — high identity verification) |
-| 2 | NHS login → PFA | NHS login returns control to the PFA with an **NHS login ID token** |
-| 3 | PFA → APIM AuthZ | PFA presents the NHS login ID token to the APIM authorisation service |
-| 4 | APIM validates | APIM authorisation service validates the NHS login ID token using NHS login's public key |
-| 5 | APIM → PFA | APIM returns an **APIM access token** to the PFA |
-| 6 | PFA → BaRS API Proxy | PFA makes a request to the BaRS API proxy within APIM, including the APIM access token (in header) and the subject's NHS Number (in URL/body) |
-| 7 | Proxy validates | BaRS API proxy validates the APIM access token |
-| 8 | Proxy → Token Cache | Proxy retrieves the cached NHS login ID token for this session |
-| 9 | Proxy → Endpoint Service | Proxy looks up the Receiver's endpoint (via Endpoint Catalogue) |
-| 10 | Endpoint Service → Proxy | Returns Receiver endpoint URLs (including auth URL) |
-| 11 | Proxy → Receiver AuthZ | Proxy presents the NHS login ID token to the Receiver's authorisation server (via the Receiver's auth URL) |
-| 12 | Receiver AuthZ validates | Receiver's authorisation server validates the NHS login ID token with NHS login |
-| 13 | Receiver AuthZ → Proxy | Receiver authorisation server returns a **Receiver access token** |
-| 14 | Proxy → Receiver API | Proxy makes the actual API request to the Receiver with the Receiver access token |
+| Step | Action                     | Description                                                                                                                                   |
+| ------| ----------------------------| -----------------------------------------------------------------------------------------------------------------------------------------------|
+| 1    | Patient enters credentials | Patient authenticates with NHS login (P9 — high identity verification)                                                                        |
+| 2    | NHS login → PFA            | NHS login returns control to the PFA with an **NHS login ID token**                                                                           |
+| 3    | PFA → APIM AuthZ           | PFA presents the NHS login ID token to the APIM authorisation service                                                                         |
+| 4    | APIM validates             | APIM authorisation service validates the NHS login ID token using NHS login's public key                                                      |
+| 5    | APIM → PFA                 | APIM returns an **APIM access token** to the PFA                                                                                              |
+| 6    | PFA → BaRS API Proxy       | PFA makes a request to the BaRS API proxy within APIM, including the APIM access token (in header) and the subject's NHS Number (in URL/body) |
+| 7    | Proxy validates            | BaRS API proxy validates the APIM access token                                                                                                |
+| 8    | Proxy → Token Cache        | Proxy retrieves the cached NHS login ID token for this session                                                                                |
+| 9    | Proxy → Endpoint Service   | Proxy looks up the Receiver's endpoint (via Endpoint Catalogue)                                                                               |
+| 10   | Endpoint Service → Proxy   | Returns Receiver endpoint URLs (including auth URL)                                                                                           |
+| 11   | Proxy → Receiver AuthZ     | Proxy presents the NHS login ID token to the Receiver's authorisation server (via the Receiver's auth URL)                                    |
+| 12   | Receiver AuthZ validates   | Receiver's authorisation server validates the NHS login ID token with NHS login                                                               |
+| 13   | Receiver AuthZ → Proxy     | Receiver authorisation server returns a **Receiver access token**                                                                             |
+| 14   | Proxy → Receiver API       | Proxy makes the actual API request to the Receiver with the Receiver access token                                                             |
 
 ### Token Types in Play
 
@@ -188,12 +188,77 @@ As per [PFS D1 — Endpoint lookup and resolution](https://nhsd-confluence.digit
 
 For BaRS patient-facing appointments, the lookup uses the target service identifier (e.g. the service the patient wants to book with), resolved via the Endpoint Catalogue.
 
-### 5. New / Modified Headers
+### 5. Handling `NHSD-End-User-Organisation` in Patient-Facing Flows
+
+**Current state:** In B2B BaRS, the `NHSD-End-User-Organisation` header is **mandatory** on every request. It carries a Base64-encoded FHIR Organization resource identifying the sending organisation (ODS code). Receivers use it for:
+- Authorisation (ownership checks — does this org have permission to access this endpoint?)
+- Address masking (public/private visibility)
+- Audit (which organisation sent the request)
+
+**The problem in PFS:** A patient isn't acting on behalf of an organisation. They're acting as themselves. The header's current semantics ("the organisation making this request") don't map cleanly to a citizen-initiated interaction.
+
+#### Options
+
+| Option | Approach | Pros | Cons |
+|--------|----------|------|------|
+| **A — Patient's registered GP ODS code** | APIM looks up the patient's registered GP from PDS and injects that ODS code as the `NHSD-End-User-Organisation` | Backwards compatible — Receivers that validate the header won't break. Data is available from PDS/NHS login claims. | Semantically misleading — the GP practice isn't "sending" the request. Could trigger unintended authorisation rules (e.g. Receiver only accepts from certain orgs). |
+| **B — Synthetic "patient access" identifier** | Define a well-known code (e.g. ODS code `PATIENT-DIRECT` or a distinct Organization resource with `system: https://fhir.nhs.uk/Id/patient-access-origin`) | Clear semantics — Receivers can explicitly distinguish patient-initiated from org-initiated requests. Enables different business rules. | Breaking change — Receivers must be updated to accept this new value. Not backwards compatible with current validation. |
+| **C — Make header optional for PFS** | Relax the mandatory constraint for user-restricted tokens. Omit the header entirely for patient-facing flows. | Clean — removes ambiguity by simply not sending a header that doesn't apply. | Spec change required. Receivers that unconditionally require the header will reject requests. |
+| **D — APIM platform ODS code** | APIM injects its own ODS code (representing NHS England API Platform as the trusted origin) | Backwards compatible — header is present and valid. Semantically correct: APIM *is* the sending system from the Receiver's perspective. Consistent with APIM being the single trusted origin. | Receivers cannot distinguish which patient-facing app originated the request from the header alone (but this is available from the token). |
+
+#### Recommendation
+
+**Option D (APIM platform ODS code)** is recommended as the primary approach, with Option B as a future enhancement:
+
+1. **Short term (Option D):** APIM populates `NHSD-End-User-Organisation` with a Base64-encoded Organization identifying the NHS England API Platform (e.g. ODS code `X26` or a dedicated PFS platform code). This:
+   - Maintains backwards compatibility — the header is present and valid
+   - Is semantically accurate — APIM is the trusted origin that the Receiver has onboarded
+   - Allows Receivers to apply a blanket "trust APIM" rule rather than per-organisation rules
+   - The *patient's* identity comes from the access token, not from this header
+
+2. **Longer term (Option B enhancement):** Once Receivers have adapted to patient-facing flows, introduce a dedicated `patient-access` identifier type in the header that explicitly signals "this is a patient-initiated request." This enables Receivers to apply patient-specific business rules (e.g. different slot availability, different cancellation policies).
+
+#### What the header would look like (Option D)
+
+```json
+{
+  "resourceType": "Organization",
+  "identifier": [
+    {
+      "system": "https://fhir.nhs.uk/Id/ods-organization-code",
+      "value": "X26"
+    }
+  ],
+  "name": "NHS England API Platform (Patient Facing Services)"
+}
+```
+
+Base64-encoded: `eyJyZXNvdXJjZVR5cGUiOiJPcmdhbml6YXRpb24iLCJpZGVudGlmaWVyIjpbeyJzeXN0ZW0iOiJodHRwczovL2ZoaXIubmhzLnVrL0lkL29kcy1vcmdhbml6YXRpb24tY29kZSIsInZhbHVlIjoiWDI2In1dLCJuYW1lIjoiTkhTIEVuZ2xhbmQgQVBJIFBsYXRmb3JtIChQYXRpZW50IEZhY2luZyBTZXJ2aWNlcykifQ==`
+
+#### Impact on Receivers
+
+| Receiver behaviour | Option D impact |
+|--------------------|-----------------|
+| Validates header is present | ✅ No change — header is present |
+| Validates ODS code format | ✅ No change — valid ODS code |
+| Uses ODS code for ownership/access control | ⚠️ Receiver must recognise the APIM ODS code as a permitted "sender" for patient-facing flows. This is part of onboarding. |
+| Uses ODS code for audit | ✅ Audit records show APIM as the origin. Patient identity is audited separately from the token. |
+| Applies org-specific business rules | ⚠️ Receiver should not apply org-specific rules to the platform code — patient-facing access should have its own rule set |
+
+#### Decision needed
+
+This is a design decision that should be confirmed with the NHS API Platform team and the BaRS Core specification owners. The key question:
+
+> Should the `NHSD-End-User-Organisation` header for patient-facing flows carry the APIM platform identity (Option D), or should the specification be updated to accommodate patient-direct semantics (Option B/C)?
+
+Until this is resolved, Option D provides a backwards-compatible path that doesn't require spec changes.
+
+### 6. New / Modified Headers
 
 | Header | Change |
 |---|---|
 | `Authorization` | Carries the **APIM access token** (user-restricted, not application-restricted) |
-| `NHSD-End-User-Organisation` | **Not applicable** for patient-facing — the patient is not acting on behalf of an organisation |
+| `NHSD-End-User-Organisation` | Carries the **APIM platform identity** (Option D — see Section 5 above). Not the patient's org. Patient identity is in the token. |
 | `NHSD-Target-Identifier` | Unchanged — still identifies the target service |
 | `X-Request-Id` / `X-Correlation-Id` | Unchanged |
 
@@ -593,10 +658,7 @@ The proxy then filters the Bundle entries:
 | Topic                                  | Notes                                                                                                            |
 | ----------------------------------------| ------------------------------------------------------------------------------------------------------------------|
 | **Delegated access**                   | Can a parent/guardian book on behalf of a child? Requires a delegation/proxy model (see National Proxy Service). |
-| **Notifications**                      | Should patients receive push/email/SMS on appointment status changes?                                            |
-| **Waitlists**                          | If no slot is available, can the patient join a waitlist? Extends beyond current BaRS scope.                     |
 | **Multi-provider journeys**            | Patient books at a service that then refers onwards — how does the patient retain visibility?                    |
-| **PDS linkage**                        | Should the API perform a PDS lookup to enrich the Appointment resource?                                          |
 | **Accessibility**                      | PFAs must meet WCAG 2.2 AA. Error messages must be understandable by non-clinical users.                         |
 | **Receiver AuthZ server requirements** | Detailed specification needed for what claims/scopes Receiver AuthZ servers must support.                        |
 | **Token lifetime and refresh**         | How long are Receiver access tokens valid? Does APIM handle refresh?                                             |
