@@ -177,6 +177,8 @@ This is handled within APIM's internal token cache. The PFA never sees or handle
 
 ### 2. Scoping and Consent
 
+> **⚠️ This section requires review with the NHS Login team and the APIM team to confirm the scope model assumptions are correct.**
+
 #### NHS Login scope model — constraints
 
 NHS Login uses a **fixed, agreed scope model** based on OpenID Connect. It is not an open custom-scope mechanism. The standard scopes available to all partners are:
