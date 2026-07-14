@@ -972,7 +972,7 @@ The proxy then filters the Bundle entries:
 | **Delegated access**                   | Can a parent/guardian book on behalf of a child? Requires a delegation/proxy model (see National Proxy Service). |
 | **Multi-provider journeys**            | Patient books at a service that then refers onwards — how does the patient retain visibility?                    |
 | **Accessibility**                      | PFAs must meet WCAG 2.2 AA. Error messages must be understandable by non-clinical users.                         |
-| **Receiver AuthZ server requirements** | Detailed specification needed for what claims/scopes Receiver AuthZ servers must support.                        |
+| **Receiver AuthZ server contract** | Detailed specification needed for the interface between APIM and the Receiver AuthZ server: what input token it accepts (NHS Login ID token), what claims it must validate (NHS Number, issuer, expiry, verification level), how APIM authenticates to it (client credentials, mTLS, API key), the grant type (OAuth2 token exchange or custom), and the format/claims/lifetime of the Receiver access token it issues. |
 | **Token lifetime and refresh**         | How long are Receiver access tokens valid? Does APIM handle refresh?                                             |
 
 ---
@@ -1023,7 +1023,7 @@ The proxy then filters the Bundle entries:
 | I1 | No decision yet on `NHSD-End-User-Organisation` header handling for PFS (Option A/B/C/D) | Open | Blocks detailed Receiver onboarding guidance | Confirm with NHS API Platform team and BaRS Core spec owners | BaRS Architecture |
 | I2 | OAuth scope model for patient-facing BaRS not yet defined or agreed | Open | Blocks PFA development and Receiver AuthZ implementation | Define scope model; agree with NHS login and APIM teams | BaRS Architecture |
 | I3 | No DPIA exists for patient-level audit logging in the new proxy | Open | Cannot log patient NHS Number until IG approval is obtained | Commission DPIA for PFS audit data; engage IG team early | IG Lead |
-| I4 | Receiver AuthZ server specification not yet written | Open | Receivers cannot begin implementation | Produce Receiver AuthZ spec (token format, claims, scopes, validation rules) | BaRS Architecture |
+| I4 | Receiver AuthZ server contract not yet specified | Open | Receivers cannot begin implementation | Produce Receiver AuthZ contract spec: input token format, required claim validation, APIM-to-Receiver authentication method, grant type, and Receiver access token format/claims/lifetime | BaRS Architecture |
 | I5 | Delegated/proxy access model (parent booking for child) not defined | Open | Cannot support family/carer booking scenarios at launch | Defer to post-MVP or align with National Proxy Service timeline | BaRS Programme |
 
 ### Dependencies
