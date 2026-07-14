@@ -415,10 +415,25 @@ Replatform the BaRS Proxy to AWS (API Gateway + Lambda), designed from the start
 | Built-in audit logging (CloudWatch, structured JSON, 12-month+ retention) — meets PFS requirements | Migration risk — existing B2B traffic must be cut over |
 | Dynamic endpoint resolution via Endpoint Catalogue API (already being built) | Parallel running period where both proxies are live |
 | Supports both B2B and B2C from day one | Requires APIM team to route traffic to the new backend |
-| Token caching (in-memory or DynamoDB TTL) reduces Receiver AuthZ load | |
+| Token caching (in-memory or DynamoDB TTL) reduces Receiver AuthZ load | **Supplier impact: traffic originates from AWS (different IP range)** — Receivers that whitelist by IP will need to update their firewalls |
 | Observable (CloudWatch + Grafana, not Splunk-dependent) | |
 | Aligns with the EPC migration already in progress | |
 | Owned and operated by the BaRS team — no dependency on APIM team for logic changes | |
+
+**⚠️ Supplier impact — change of origin IP:**
+
+When the proxy moves from Apigee to AWS, outbound traffic to Receivers will originate from **AWS IP ranges (eu-west-2)** rather than the current Apigee/Google Cloud IP ranges. This affects any Receiver that restricts inbound connections by source IP address (firewall rules, WAF policies, network ACLs). Specifically:
+
+- Receivers using **IP whitelisting** will need to add the new AWS NAT Gateway / elastic IP addresses to their allow lists *before* traffic is migrated
+- Receivers behind **network firewalls or security appliances** (common in NHS Trusts) will need firewall rule changes approved through their change management process — this can take weeks or months depending on the Trust
+- The **mTLS client certificate** will also change (issued from a different infrastructure), so Receivers validating the client cert subject/issuer will need to trust the new certificate
+- During the **parallel running period**, Receivers may need to whitelist *both* Apigee and AWS IP ranges simultaneously
+
+This is a significant operational impact that requires:
+1. Early communication to all onboarded Receivers (months in advance)
+2. Publication of the new IP ranges and certificates well before cutover
+3. A phased migration with per-Receiver validation rather than a big-bang switch
+4. A rollback plan if individual Receivers cannot update their firewalls in time
 
 ##### Option C — Hybrid (new proxy for PFS only, existing for B2B)
 
