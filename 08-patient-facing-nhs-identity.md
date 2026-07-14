@@ -541,6 +541,108 @@ Systems that wish to accept patient-initiated bookings must:
 >
 > **Delivery of the EPC is therefore a blocking dependency for patient-facing BaRS.**
 
+### Interim Workarounds (Pre-EPC)
+
+If PFS development needs to begin before the EPC is production-ready, the following workarounds could unblock early development and pilot testing. None are suitable for production at scale, but they could support INT/sandbox testing and a limited pilot.
+
+#### Workaround 1 — Extend `targets.json` with an auth key convention
+
+Add a parallel key structure to `targets.json` that maps the same DOS service ID to an auth URL using a naming convention:
+
+```json
+{
+  "NHSD-Target-Identifier": {
+    "https://fhir.nhs.uk/Id/dos-service-id": {
+      "2000072489": "https://bars-prod.medicus.thirdparty.nhs.uk/FHIR/R4",
+      "2000072489:auth": "https://auth.medicus.thirdparty.nhs.uk/oauth2/token"
+    }
+  }
+}
+```
+
+The proxy would look up `{dosServiceId}` for the API URL and `{dosServiceId}:auth` for the auth URL.
+
+| Pros | Cons |
+|------|------|
+| Minimal change to existing infrastructure — same file, same deployment process | Fragile naming convention — no validation, no schema |
+| Can be deployed quickly for pilot | Does not scale — doubles the number of entries |
+| No dependency on EPC delivery | Cannot express connectionType, payloadType, or any metadata |
+| | Requires custom proxy logic to handle the `:auth` suffix |
+| | Still requires manual file updates for every Receiver |
+
+#### Workaround 2 — Separate auth config file alongside `targets.json`
+
+Maintain a second JSON file (e.g. `auth-targets.json`) that maps DOS service IDs to auth URLs:
+
+```json
+{
+  "https://fhir.nhs.uk/Id/dos-service-id": {
+    "2000072489": "https://auth.medicus.thirdparty.nhs.uk/oauth2/token",
+    "110549": "https://auth.pharmoutcomes.emis.thirdparty.nhs.uk/oauth2/token"
+  }
+}
+```
+
+The proxy reads both files: `targets.json` for the API URL, `auth-targets.json` for the auth URL.
+
+| Pros | Cons |
+|------|------|
+| Clean separation — no pollution of the existing routing file | Two files to keep in sync — risk of drift |
+| Existing B2B traffic completely unaffected | Same manual maintenance problem × 2 |
+| Simple to implement in the proxy | No validation that a service has both entries |
+| | Still no metadata (connectionType, payloadType, status, period) |
+
+#### Workaround 3 — Well-known auth URL convention (no lookup)
+
+Define a convention where the auth URL is derived from the API URL by a standard transformation:
+
+```
+API URL:  https://bars-prod.medicus.thirdparty.nhs.uk/FHIR/R4
+Auth URL: https://bars-prod.medicus.thirdparty.nhs.uk/.well-known/oauth2/token
+```
+
+Or require Receivers to publish a `.well-known/smart-configuration` endpoint (per SMART on FHIR) at a predictable path relative to their FHIR base URL.
+
+| Pros | Cons |
+|------|------|
+| Zero additional configuration — derived from the API URL that's already in `targets.json` | Requires all Receivers to host auth on the same domain as their API (may not be architecturally possible) |
+| Self-maintaining — no separate auth config to manage | Not all suppliers will conform to the same URL convention |
+| Aligns with SMART on FHIR `.well-known` discovery | Adds a runtime HTTP call to discover the auth URL (latency) |
+| No dependency on EPC | Receivers behind different infrastructure for auth vs API would break the pattern |
+
+#### Workaround 4 — Hardcoded configuration per Receiver in the proxy (environment variables or config map)
+
+For a limited pilot with 1-3 Receivers, hardcode the auth URLs in the proxy's configuration (environment variables, Apigee KVM, or Lambda config):
+
+```
+RECEIVER_AUTH_MEDICUS=https://auth.medicus.thirdparty.nhs.uk/oauth2/token
+RECEIVER_AUTH_PHARMOUTCOMES=https://auth.pharmoutcomes.emis.thirdparty.nhs.uk/oauth2/token
+```
+
+The proxy maps from the resolved API URL (from `targets.json`) to the corresponding auth URL via config.
+
+| Pros | Cons |
+|------|------|
+| Simplest possible implementation for pilot | Does not scale beyond a handful of Receivers |
+| No file format changes | Requires proxy code change for each new Receiver |
+| Perfectly acceptable for INT/sandbox | Not viable for production |
+
+#### Recommendation
+
+For **development and INT testing**, Workaround 2 (separate `auth-targets.json`) or Workaround 4 (hardcoded config) are the most pragmatic — they unblock PFS proxy development without any dependency on EPC delivery.
+
+For **a limited production pilot** (e.g. 2-3 Receivers), Workaround 1 or 2 could work short-term.
+
+For **production at scale**, none of these workarounds are acceptable. The EPC remains the target-state solution and the only approach that supports:
+- Structured metadata (connectionType, payloadType, status, period)
+- Self-service endpoint management by suppliers
+- Dynamic resolution without manual file updates
+- Validation that both auth and API endpoints exist for a service
+
+The workarounds should be treated as **scaffolding** — built to unblock development, with a clear plan to remove them once the EPC is live.
+
+---
+
 For patient-facing flows, the APIM proxy needs to discover **two** URLs for each Receiver:
 
 1. **The Receiver's authorisation server URL** — where APIM exchanges the NHS login ID token for a Receiver access token
