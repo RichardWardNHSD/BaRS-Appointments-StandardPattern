@@ -34,6 +34,32 @@ Following the PFS D6 decision, **APIM handles the token exchange** between the P
 ### Overview Diagram
 
 ```mermaid
+graph TD
+    subgraph PatientAuth["1. Patient Authenticates"]
+        P[Patient] -->|"Credentials"| NL[NHS Login]
+        NL -->|"NHS Login ID Token<br/>(verified NHS Number)"| PFA[Patient Facing App]
+    end
+
+    subgraph APIMExchange["2. APIM Brokers Access"]
+        PFA -->|"ID Token"| APIM_AUTH[APIM AuthZ Service]
+        APIM_AUTH -->|"APIM Access Token"| PFA
+        PFA -->|"API call + APIM Token"| PROXY[APIM BaRS Proxy]
+        PROXY -->|"Endpoint Lookup"| EPC[Endpoint Catalogue]
+        PROXY -->|"NHS Login ID Token"| REC_AUTH[Receiver AuthZ]
+        REC_AUTH -->|"Receiver Access Token"| PROXY
+    end
+
+    subgraph ReceiverCall["3. Proxied API Call"]
+        PROXY -->|"Request + Receiver Token"| REC_API[Receiver API]
+        REC_API -->|"Response"| PROXY
+        PROXY -->|"Response"| PFA
+    end
+```
+
+
+#### Sequence Diagram
+
+```mermaid
 sequenceDiagram
     participant Patient
     participant NHSLogin as NHS Login
@@ -502,6 +528,19 @@ Systems that wish to accept patient-initiated bookings must:
 
 ## Endpoint Catalogue — Receiver Auth and API Endpoints
 
+> **⚠️ Hard dependency: The Endpoint Catalogue (EPC) is a prerequisite for Patient-Facing Services.**
+>
+> The current BaRS Proxy resolves Receiver addresses from `targets.json` — a flat JSON file that maps a single DOS service ID to a single URL. This structure **cannot support patient-facing flows** because PFS requires **two separate endpoints** per Receiver:
+>
+> 1. An **authorisation endpoint** (the Receiver's OAuth2 token exchange URL)
+> 2. A **BaRS API endpoint** (the Receiver's FHIR R4 base URL)
+>
+> `targets.json` has no concept of endpoint types, connection types, or payload types. It is a one-dimensional lookup: service ID → URL. There is no way to register a second URL (the auth server) for the same service, and no way to distinguish between endpoint purposes.
+>
+> **This means PFS cannot be delivered on the current proxy infrastructure.** The Endpoint Catalogue — with its support for multiple endpoints per HealthcareService, distinguished by `connectionType` and `payloadType` — is the only mechanism that can support the two-endpoint resolution pattern PFS requires.
+>
+> **Delivery of the EPC is therefore a blocking dependency for patient-facing BaRS.**
+
 For patient-facing flows, the APIM proxy needs to discover **two** URLs for each Receiver:
 
 1. **The Receiver's authorisation server URL** — where APIM exchanges the NHS login ID token for a Receiver access token
@@ -783,29 +822,6 @@ The proxy then filters the Bundle entries:
 ---
 
 ## Summary
-
-```mermaid
-graph TD
-    subgraph PatientAuth["1. Patient Authenticates"]
-        P[Patient] -->|"Credentials"| NL[NHS Login]
-        NL -->|"NHS Login ID Token<br/>(verified NHS Number)"| PFA[Patient Facing App]
-    end
-
-    subgraph APIMExchange["2. APIM Brokers Access"]
-        PFA -->|"ID Token"| APIM_AUTH[APIM AuthZ Service]
-        APIM_AUTH -->|"APIM Access Token"| PFA
-        PFA -->|"API call + APIM Token"| PROXY[APIM BaRS Proxy]
-        PROXY -->|"Endpoint Lookup"| EPC[Endpoint Catalogue]
-        PROXY -->|"NHS Login ID Token"| REC_AUTH[Receiver AuthZ]
-        REC_AUTH -->|"Receiver Access Token"| PROXY
-    end
-
-    subgraph ReceiverCall["3. Proxied API Call"]
-        PROXY -->|"Request + Receiver Token"| REC_API[Receiver API]
-        REC_API -->|"Response"| PROXY
-        PROXY -->|"Response"| PFA
-    end
-```
 
 **Key principle:** The PFA only ever communicates with APIM. APIM handles endpoint discovery, token exchange with the Receiver, and request proxying. The Receiver only needs to trust APIM as a single origin. This is the same proven pattern used by GP Connect Patient Facing Services (Clinical Data Sharing APIs).
 
