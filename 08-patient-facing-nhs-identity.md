@@ -832,3 +832,52 @@ The proxy then filters the Bundle entries:
 - [PFS D1 — Endpoint lookup and resolution](https://nhsd-confluence.digital.nhs.uk/spaces/DCA/pages/520341345/PFS+D1+-+Endpoint+lookup+and+resolution) — APIM handles endpoint lookup
 - [NHS login separate authentication and authorisation (developer guide)](https://digital.nhs.uk/developer/guides-and-documentation/security-and-authorisation/user-restricted-restful-apis-nhs-login-separate-authentication-and-authorisation)
 - [NHS API Producer Guidance (National Proxy Service)](https://nhsdigital.github.io/national-proxy-service-integration-docs/patient-facing-journeys/api-producer-guidance)
+
+---
+
+## RAID Log
+
+### Risks
+
+| ID | Risk | Likelihood | Impact | Mitigation | Owner |
+|----|------|-----------|--------|-----------|-------|
+| R1 | Endpoint Catalogue (EPC) not delivered in time — PFS cannot launch without multi-endpoint resolution (`targets.json` cannot support auth + API endpoint model) | Medium | Critical | EPC delivery is already in progress; align PFS timeline to EPC milestones. Escalate if EPC slips. | BaRS Programme |
+| R2 | Receiver suppliers unable to update firewall rules / IP whitelists in time for proxy replatforming (Apigee → AWS) | High | High | Communicate new IP ranges 3+ months in advance. Phased per-Receiver migration. Maintain parallel running with rollback. | BaRS Run & Maintain |
+| R3 | Receiver suppliers do not implement an authorisation server capable of accepting NHS login ID tokens from APIM | Medium | High | Publish clear Receiver AuthZ spec early. Provide reference implementation or sandbox. Include in assurance requirements. | BaRS Architecture |
+| R4 | mTLS certificate change (new issuer from AWS) rejected by Receivers that validate cert subject/issuer | Medium | High | Publish new cert details well in advance. Dual-cert period during transition. Test with each Receiver in INT before cutover. | BaRS Run & Maintain |
+| R5 | NHS login ID token lifetime too short — tokens expire during APIM caching/exchange, causing auth failures | Low | Medium | Validate token lifetime assumptions with NHS login team. Implement proactive token refresh in APIM cache. | BaRS Architecture |
+| R6 | Splunk retirement timeline overtakes PFS delivery — no audit capability available during gap | Medium | Medium | Ensure CloudWatch audit logging is part of the new proxy MVP. Do not depend on Splunk for PFS audit. | BaRS Engineering |
+| R7 | Patient data exposure if token exchange logs or audit entries inadvertently capture NHS Number in non-redacted fields | Low | Critical | PII redaction built into audit logging by design. DPIA for new audit data. Security review of log pipeline before go-live. | IG / Security |
+
+### Assumptions
+
+| ID | Assumption | Impact if wrong |
+|----|-----------|-----------------|
+| A1 | NHS login will support P9 (high) identity verification for PFS patients at the required scale | PFS cannot launch — identity assurance level is a hard requirement |
+| A2 | APIM will continue to be the public-facing entry point even after the proxy moves to AWS (i.e. APIM routes to the new proxy backend) | If APIM is bypassed entirely, the PFA would need to call AWS directly — different onboarding model, different TLS, different domain |
+| A3 | Receivers will implement a standards-based OAuth2 authorisation server that accepts NHS login ID tokens | If Receivers use proprietary auth mechanisms, the token exchange pattern breaks and bespoke integrations are needed per supplier |
+| A4 | The Endpoint Catalogue will support `connectionType` and `payloadType` filtering to distinguish auth endpoints from API endpoints | If EPC doesn't support this, an alternative discovery mechanism is needed (e.g. well-known URLs) |
+| A5 | The `NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers without requiring spec changes | If Receivers reject this value, a spec change or per-Receiver negotiation is needed before PFS can route traffic |
+| A6 | Token caching within APIM/the new proxy is acceptable from a security and IG perspective | If tokens must not be cached, every request requires a fresh token exchange — significant latency and load on Receiver AuthZ servers |
+
+### Issues
+
+| ID | Issue | Status | Impact | Action | Owner |
+|----|-------|--------|--------|--------|-------|
+| I1 | No decision yet on `NHSD-End-User-Organisation` header handling for PFS (Option A/B/C/D) | Open | Blocks detailed Receiver onboarding guidance | Confirm with NHS API Platform team and BaRS Core spec owners | BaRS Architecture |
+| I2 | OAuth scope model for patient-facing BaRS not yet defined or agreed | Open | Blocks PFA development and Receiver AuthZ implementation | Define scope model; agree with NHS login and APIM teams | BaRS Architecture |
+| I3 | No DPIA exists for patient-level audit logging in the new proxy | Open | Cannot log patient NHS Number until IG approval is obtained | Commission DPIA for PFS audit data; engage IG team early | IG Lead |
+| I4 | Receiver AuthZ server specification not yet written | Open | Receivers cannot begin implementation | Produce Receiver AuthZ spec (token format, claims, scopes, validation rules) | BaRS Architecture |
+| I5 | Delegated/proxy access model (parent booking for child) not defined | Open | Cannot support family/carer booking scenarios at launch | Defer to post-MVP or align with National Proxy Service timeline | BaRS Programme |
+
+### Dependencies
+
+| ID | Dependency | Depends on | Required by | Status | Impact if not met |
+|----|-----------|-----------|-------------|--------|-------------------|
+| D1 | Endpoint Catalogue (EPC) delivery — multi-endpoint resolution with `connectionType`/`payloadType` filtering | EPC Engineering team | PFS proxy can resolve auth + API endpoints | In progress | **Blocker** — PFS cannot function without EPC. `targets.json` cannot support the two-endpoint model. |
+| D2 | New AWS proxy build (or Apigee extension) capable of token exchange | BaRS Engineering team | PFS end-to-end flow | Not started | **Blocker** — current Apigee proxy has no token exchange capability |
+| D3 | NHS login support for PFS at P9 level with required claims | NHS login team | Patient authentication | Available (existing) | Low risk — NHS login already supports P9. Confirm claims include NHS Number. |
+| D4 | APIM team to route PFS traffic to new backend (if replatformed) | APIM / API Platform team | PFS go-live | Not started | Delay — APIM team capacity is a constraint; engage early |
+| D5 | Receiver suppliers implement AuthZ servers and update firewall rules | Each Receiver supplier | PFS traffic can reach Receivers | Not started | Delay — phased rollout; early suppliers first. Cannot force all suppliers to implement simultaneously. |
+| D6 | DPIA approval for patient-level audit logging | IG team | Audit logging can include NHS Number | Not started | Delay — PFS can launch without patient-level audit but would not meet regulatory expectations |
+| D7 | BaRS Core spec update to accommodate patient-facing header semantics | BaRS Standards team | Receiver guidance is unambiguous | Not started | Workaround available (Option D) but long-term clarity requires spec change |
