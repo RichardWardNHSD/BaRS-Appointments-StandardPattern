@@ -177,16 +177,68 @@ This is handled within APIM's internal token cache. The PFA never sees or handle
 
 ### 2. Scoping and Consent
 
-The OAuth scopes for patient-facing BaRS need to be defined. Suggested scope model:
+#### NHS Login scope model — constraints
 
-| Scope | Permits |
+NHS Login uses a **fixed, agreed scope model** based on OpenID Connect. It is not an open custom-scope mechanism. The standard scopes available to all partners are:
+
+| NHS Login Scope | What it provides |
 |---|---|
-| `urn:nhsd:apim:user-nhs-login:aal3:booking-and-referral/patient-access` | Base access to patient-facing BaRS |
+| `openid` | Mandatory — base OIDC authentication |
+| `profile` | Patient's name and date of birth |
+| `email` | Patient's email address |
+| `nhs_number` | Verified NHS Number |
+| `gp_integration_credentials` | GP Online credentials (for GP system access) |
+| `gp_registration_details` | Registered GP practice ODS code and name |
+
+**Key constraint:** Partners cannot define their own scopes. Bespoke scopes (e.g. a `booking-and-referral` scope) would require a **negotiated exception process** with the NHS Login team on a case-by-case basis. This is not self-service — it requires explicit agreement and takes time.
+
+#### Implication for PFS
+
+The patient-facing BaRS scopes listed below are **not NHS Login scopes** — they are **APIM-level scopes** that control what the APIM access token permits the PFA to do. The distinction is:
+
+- **NHS Login scopes** → control what claims are in the ID token (identity data)
+- **APIM scopes** → control what API operations the PFA is authorised to call (access control)
+
+These are two separate layers:
+
+```mermaid
+graph LR
+    NL["NHS Login<br/>(fixed scopes: openid, profile,<br/>nhs_number, gp_registration_details)"] -->|"ID Token with claims"| APIM["APIM AuthZ<br/>(defines API access scopes)"]
+    APIM -->|"Access Token with<br/>API operation scopes"| PFA["Patient Facing App"]
+```
+
+#### NHS Login scopes required for PFS
+
+At the NHS Login level, the PFA will need to request:
+
+| NHS Login Scope | Why PFS needs it |
+|---|---|
+| `openid` | Mandatory |
+| `nhs_number` | Required — the patient's NHS Number flows through the token exchange and is used for own-record enforcement |
+| `gp_registration_details` | Needed if using Option A for `NHSD-End-User-Organisation` (patient's registered GP ODS code) |
+| `profile` | Optional — patient name for display in audit or booking confirmation |
+
+These are all standard NHS Login scopes — **no bespoke scope negotiation is required**.
+
+#### APIM access control scopes (separate from NHS Login)
+
+The following scopes are defined at the **APIM authorisation layer**, not within NHS Login. They control what API operations the PFA's APIM access token permits:
+
+| APIM Scope | Permits |
+|---|---|
+| `urn:nhsd:apim:user-nhs-login:aal3:booking-and-referral/patient-access` | Base access to patient-facing BaRS operations |
 | `patient/Slot.read` | Search for available slots |
 | `patient/Appointment.read` | View own appointments |
 | `patient/Appointment.write` | Book, update, or cancel own appointments |
 
-The patient must explicitly consent to these scopes during the NHS login flow. The scopes constrain what operations the APIM access token permits.
+These are configured on the APIM product/application registration — they are not visible to or consented by the patient in the NHS Login flow. The patient consents to identity sharing (NHS Login scopes); the PFA is authorised for specific API operations (APIM scopes) based on its registered application permissions.
+
+#### Decision needed
+
+Confirm with the NHS Login team and APIM team:
+1. Are the standard NHS Login scopes (`openid`, `nhs_number`, `gp_registration_details`) sufficient, or does PFS require any claims not currently available?
+2. Are the APIM-level scopes purely application configuration, or do any require negotiation with the platform team?
+3. Does the patient see/consent to anything beyond the standard NHS Login consent screen?
 
 ### 3. Patient Context Enforcement
 
