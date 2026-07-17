@@ -406,6 +406,14 @@ The Receiver's `/metadata` response should indicate support for patient-facing i
 
 #### What patient-facing interactions must record
 
+> **Note:** The following list is a proposed set of audit fields based on first principles — specifically, what would be needed to respond to a Subject Access Request, investigate a patient complaint, or demonstrate GDPR accountability. It is not drawn from an existing published NHS specification. It should be validated with the IG team and formalised as part of the PFS DPIA (see Issue I3 in the RAID log).
+>
+> **Basis for inclusion:**
+> - [UK GDPR Article 5(2) — Accountability principle](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/accountability-and-governance/accountability-framework/) — organisations must demonstrate compliance with data protection principles
+> - [NHS API Producer Guidance (PXY-4)](https://nhsdigital.github.io/national-proxy-service-integration-docs/patient-facing-journeys/api-producer-guidance) — audit both `sub` (patient) and `act` (proxy/actor) correctly
+> - [PFS D6 — Auth Token Exchange](https://nhsd-confluence.digital.nhs.uk/display/DCA/PFS+D6+-+Auth+Token+Exchange) — implies audit capability for the token exchange flow but does not prescribe specific fields
+> - [ICO guidance on Subject Access Requests](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/right-of-access/) — organisations must be able to identify and retrieve all processing related to a data subject
+
 Patient-facing interactions must record:
 
 - The authenticated patient's NHS Number (from the NHS login ID token)
