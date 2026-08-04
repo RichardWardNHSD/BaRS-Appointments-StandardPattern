@@ -149,14 +149,63 @@ sequenceDiagram
     ApigeeProxy-->>PFA: Proxied API response
 ```
 
+#### Handling `NHSD-End-User-Organisation` in Patient-Facing Flows
+
+In B2B BaRS, the `NHSD-End-User-Organisation` header is mandatory on every request. It carries a Base64-encoded FHIR Organization resource identifying the sending organisation (ODS code). Receivers use it for authorisation (ownership checks), address masking, and audit trail purposes.
+
+**The problem:** A patient isn't acting on behalf of an organisation — they're acting as themselves. The header's current semantics ("the organisation making this request") don't map cleanly to a citizen-initiated interaction.
+
+**Options considered:**
+
+| Option | Approach | Verdict |
+|--------|----------|---------|
+| **A — Patient's registered GP ODS code** | Look up patient's GP from PDS/NHS login claims and inject as the header | Semantically misleading — GP isn't "sending" the request. Could trigger unintended authorisation rules. |
+| **B — Synthetic "patient access" identifier** | Define a well-known code (e.g. `PATIENT-DIRECT`) that signals a patient-initiated request | Clear semantics but a breaking change — Receivers must be updated to accept the new value. |
+| **C — Make header optional for PFS** | Omit the header entirely for user-restricted tokens | Clean, but spec change required. Receivers that unconditionally require the header will reject requests. |
+| **D — APIM platform ODS code** | APIM injects its own ODS code (X26) representing the NHS England API Platform as the trusted origin | **Recommended.** Backwards compatible, semantically accurate (APIM *is* the sending system), and consistent with APIM being the single trusted origin. |
+
+**Recommendation: Option D** — the proxy populates `NHSD-End-User-Organisation` with a Base64-encoded Organization identifying the NHS England API Platform:
+
+```json
+{
+  "resourceType": "Organization",
+  "identifier": [
+    {
+      "system": "https://fhir.nhs.uk/Id/ods-organization-code",
+      "value": "X26"
+    }
+  ],
+  "name": "NHS England API Platform (Patient Facing Services)"
+}
+```
+
+This:
+- Maintains backwards compatibility — the header is present and contains a valid ODS code
+- Is semantically accurate — APIM is the trusted origin that the Receiver has onboarded
+- Allows Receivers to apply a blanket "trust APIM" rule rather than per-organisation rules
+- The patient's identity comes from the Receiver access token, not this header
+
+**Impact on Receivers:**
+
+| Receiver behaviour | Impact |
+|--------------------|--------|
+| Validates header is present | No change — header is present |
+| Validates ODS code format | No change — valid ODS code |
+| Uses ODS code for ownership/access control | Receiver must recognise the APIM ODS code as a permitted "sender" for patient-facing flows (part of onboarding) |
+| Applies org-specific business rules | Receiver should not apply org-specific rules to the platform code — patient-facing access should have its own rule set |
+
+> **Longer term (Option B):** Once Receivers have adapted to patient-facing flows, a dedicated `patient-access` identifier type could be introduced to explicitly signal patient-initiated requests, enabling patient-specific business rules (e.g. different slot availability, different cancellation policies). This is a future enhancement outside the scope of this ADR.
+
+> **Decision needed:** This approach should be confirmed with the NHS API Platform team and the BaRS Core specification owners. Until confirmed, Option D provides a backwards-compatible path that doesn't require spec changes.
+
 #### Key design points
 
 - **The PFA only ever communicates with APIM.** APIM handles token exchange with the Receiver, and request proxying.
 - **The Receiver only needs to trust APIM** as a single origin — individual PFAs are never registered directly with Receivers.
 - **Token exchange is handled by Apigee policies** (ServiceCallout to the Receiver's AuthZ server). No intermediate Lambda.
-- **Endpoint resolution uses the EPC** (via the Apigee EPC proxy). The EPC provides both the auth endpoint and the API endpoint for each Receiver, distinguished by `connectionType`.
+- **Endpoint resolution uses the EPC** (via the Apigee EPC proxy). The PFA provides the Target Identifier (`NHSD-Target-Identifier` header containing the HealthcareService ID); the proxy uses this to look up both the auth endpoint and the API endpoint from the EPC.
 - **Own-record enforcement:** The patient's NHS Number is derived from the NHS login ID token. The Receiver must validate that the patient can only act on their own record.
-- **`NHSD-End-User-Organisation` header:** Carries the APIM platform identity (ODS code X26) for patient-facing flows, not the patient's organisation.
+- **`NHSD-End-User-Organisation` header:** Carries the APIM platform identity (ODS code X26) for patient-facing flows (see above). Patient identity is in the token, not the header.
 
 ---
 
@@ -230,7 +279,7 @@ These are scaffolding — to be removed once the EPC is live.
 
 | ID | Issue                                                                  | Impact                                                   |
 | ---- | ------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| I1 | `NHSD-End-User-Organisation` header handling for PFS not yet confirmed | Blocks Receiver onboarding guidance                      |
+| I1 | `NHSD-End-User-Organisation` — Option D (APIM platform ODS code X26) recommended, pending confirmation with NHS API Platform team and BaRS Core spec owners | Blocks Receiver onboarding guidance |
 | I2 | OAuth scope model for patient-facing BaRS not yet agreed               | Blocks PFA development and Receiver AuthZ implementation |
 | I3 | Receiver AuthZ server contract not specified                           | Receivers cannot begin implementation                    |
 | I4 | Delegated/proxy access model (parent booking for child) not defined    | Cannot support family/carer scenarios at launch          |
