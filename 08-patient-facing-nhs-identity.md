@@ -260,13 +260,17 @@ token.patient_nhs_number == request.body.participant[*].actor.identifier.value (
 
 ### 4. Endpoint Lookup (Service Discovery)
 
-As per [PFS D1 — Endpoint lookup and resolution](https://nhsd-confluence.digital.nhs.uk/spaces/DCA/pages/520341345/PFS+D1+-+Endpoint+lookup+and+resolution), APIM handles endpoint lookup:
+The PFA's call to the BaRS API includes the **Target Identifier** (`NHSD-Target-Identifier` header), which contains the HealthcareService ID for the service the patient wants to interact with. The BaRS proxy uses this HealthcareService ID to look up the Receiver's endpoints via the Endpoint Catalogue.
 
-- The PFA provides the patient's ODS code (registered GP practice)
-- APIM queries the Endpoint Catalogue service to find the Receiver's API URLs and auth server URL
-- The PFA doesn't need to know which backend system is being called — APIM resolves this transparently
+The flow:
 
-For BaRS patient-facing appointments, the lookup uses the target service identifier (e.g. the service the patient wants to book with), resolved via the Endpoint Catalogue.
+1. The PFA includes the `NHSD-Target-Identifier` header in its request to the BaRS API (containing the HealthcareService ID)
+2. The BaRS proxy extracts the HealthcareService ID from the header
+3. The proxy queries the Endpoint Catalogue (via the Apigee EPC proxy) to resolve the Receiver's endpoints for that HealthcareService
+4. The EPC returns both the **auth endpoint** (Receiver's OAuth2 token exchange URL) and the **API endpoint** (Receiver's FHIR R4 base URL), distinguished by `connectionType`
+5. The PFA does not need to know which backend system is being called — the proxy resolves this transparently
+
+This is the same Target Identifier mechanism used in B2B BaRS today. The only difference is that for patient-facing flows, the proxy also needs to resolve the auth endpoint (in addition to the API endpoint) so it can perform the token exchange.
 
 ### 5. Handling `NHSD-End-User-Organisation` in Patient-Facing Flows
 
