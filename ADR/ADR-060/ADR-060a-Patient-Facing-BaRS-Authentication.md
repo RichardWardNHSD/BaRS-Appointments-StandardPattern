@@ -16,15 +16,16 @@ The approach:
 
 ## Metadata
 
-| Field               | Value                                                                                                                  |
-|---------------------|------------------------------------------------------------------------------------------------------------------------|
-| **Date**            | 04/08/2026                                                                                                             |
-| **Status**          | Proposed                                                                                                               |
-| **Deciders**        | Architecture, Engineering, Solution Assurance, Technical Review and Governance, Cyber Security                         |
-| **Significant**     | Interfaces, Dependencies, Structure                                                                                    |
-| **Owners**          | BaRS Architecture (Richard W)                                                                                          |
-| **Decision**        | _Pending_                                                                                                              |
-| **Decision waiver** | —                                                                                                                      |
+
+| Field               | Value                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| **Date**            | 04/08/2026                                                                                     |
+| **Status**          | Proposed                                                                                       |
+| **Deciders**        | Architecture, Engineering, Solution Assurance, Technical Review and Governance, Cyber Security |
+| **Significant**     | Interfaces, Dependencies, Structure                                                            |
+| **Owners**          | BaRS Architecture (Richard W)                                                                  |
+| **Decision**        | _Pending_                                                                                      |
+| **Decision waiver** | —                                                                                             |
 
 ---
 
@@ -54,13 +55,14 @@ The core BaRS Appointment Management API is built and in production. The missing
 
 ### Assumptions
 
-| ID | Assumption | Impact if wrong |
-|----|-----------|-----------------|
-| A1 | NHS login will support P9 (high) identity verification for PFS patients at scale | PFS cannot launch — identity assurance level is a hard requirement |
-| A2 | APIM will continue to be the public-facing entry point for BaRS | If APIM is bypassed, a different onboarding model is needed |
-| A3 | Receivers will implement a standards-based OAuth2 authorisation server that accepts NHS login ID tokens from APIM | If Receivers use proprietary auth, bespoke integrations are needed per supplier |
-| A4 | The Endpoint Catalogue will support `connectionType` and `payloadType` filtering to distinguish auth endpoints from API endpoints | If not, an alternative discovery mechanism is needed |
-| A5 | The `NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers | If Receivers reject this value, a spec change or per-Receiver negotiation is needed |
+
+| ID | Assumption                                                                                                                       | Impact if wrong                                                                     |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| A1 | NHS login will support P9 (high) identity verification for PFS patients at scale                                                 | PFS cannot launch — identity assurance level is a hard requirement                 |
+| A2 | APIM will continue to be the public-facing entry point for BaRS                                                                  | If APIM is bypassed, a different onboarding model is needed                         |
+| A3 | Receivers will implement a standards-based OAuth2 authorisation server that accepts NHS login ID tokens from APIM                | If Receivers use proprietary auth, bespoke integrations are needed per supplier     |
+| A4 | The Endpoint Catalogue will support`connectionType` and `payloadType` filtering to distinguish auth endpoints from API endpoints | If not, an alternative discovery mechanism is needed                                |
+| A5 | The`NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers              | If Receivers reject this value, a spec change or per-Receiver negotiation is needed |
 
 ### Drivers
 
@@ -149,7 +151,7 @@ sequenceDiagram
 
 #### Key design points
 
-- **The PFA only ever communicates with APIM.** APIM handles endpoint discovery, token exchange with the Receiver, and request proxying.
+- **The PFA only ever communicates with APIM.** APIM handles token exchange with the Receiver, and request proxying.
 - **The Receiver only needs to trust APIM** as a single origin — individual PFAs are never registered directly with Receivers.
 - **Token exchange is handled by Apigee policies** (ServiceCallout to the Receiver's AuthZ server). No intermediate Lambda.
 - **Endpoint resolution uses the EPC** (via the Apigee EPC proxy). The EPC provides both the auth endpoint and the API endpoint for each Receiver, distinguished by `connectionType`.
@@ -181,13 +183,14 @@ sequenceDiagram
 
 ### Success measures
 
-| Measure | Target | Method |
-|---------|--------|--------|
-| Patient can authenticate and book an appointment via NHS App end-to-end | Functional in INT environment | Integration test suite |
-| Token exchange latency | < 500ms p95 | Monitoring |
-| Own-record enforcement | Zero cross-patient access | Penetration testing + automated validation |
-| Receiver onboarding (first Receiver) | Medicus live on PFS | Assurance process completion |
-| B2B traffic unaffected | Zero regression in B2B error rates | Existing monitoring dashboards |
+
+| Measure                                                                 | Target                             | Method                                     |
+| -------------------------------------------------------------------------| ------------------------------------| --------------------------------------------|
+| Patient can authenticate and book an appointment via NHS App end-to-end | Functional in INT environment      | Integration test suite                     |
+| Token exchange latency                                                  | < 500ms p95                        | Monitoring                                 |
+| Own-record enforcement                                                  | Zero cross-patient access          | Penetration testing + automated validation |
+| Receiver onboarding (first Receiver)                                    | Medicus live on PFS                | Assurance process completion               |
+| B2B traffic unaffected                                                  | Zero regression in B2B error rates | Existing monitoring dashboards             |
 
 ---
 
@@ -198,46 +201,40 @@ sequenceDiagram
 - [Patient-Facing BaRS — Technical Paper (WIP)](https://github.com/RichardWardNHSD/BaRS-Appointments-StandardPattern/blob/main/08-patient-facing-nhs-identity.md)
 - [PFS D6 — Auth Token Exchange](https://nhsd-confluence.digital.nhs.uk/display/DCA/PFS+D6+-+Auth+Token+Exchange)
 - [PFS D5 — Authentication](https://nhsd-confluence.digital.nhs.uk/display/DCA/PFS+D5+-+Authentication)
-- [PFS D1 — Endpoint lookup and resolution](https://nhsd-confluence.digital.nhs.uk/spaces/DCA/pages/520341345/PFS+D1+-+Endpoint+lookup+and+resolution)
 - [NHS login separate auth and authorisation (developer guide)](https://digital.nhs.uk/developer/guides-and-documentation/security-and-authorisation/user-restricted-restful-apis-nhs-login-separate-authentication-and-authorisation)
 
 ### Dependencies
 
-| ID | Dependency | Status | Impact |
-|----|-----------|--------|--------|
-| D1 | Endpoint Catalogue (EPC) — multi-endpoint resolution with `connectionType`/`payloadType` filtering | In progress | **Hard dependency** — PFS requires resolution of both an auth endpoint and an API endpoint per Receiver. If EPC is not delivered, an interim workaround is required. |
-| D2 | Token exchange capability added to the Apigee BaRS proxy (ServiceCallout policies) | Not started | **Blocker** — current proxy has no token exchange capability |
-| D3 | APIM team to apply proxy policy changes for PFS traffic | Not started | Delay risk — APIM team capacity is a constraint |
-| D4 | Receiver suppliers implement AuthZ servers | Not started | Delay — phased rollout; early suppliers first |
+
+| ID | Dependency                                                                                         | Status      | Impact                                                                                                                                                                |
+| ---- | ---------------------------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1 | Endpoint Catalogue (EPC) — multi-endpoint resolution with`connectionType`/`payloadType` filtering | In progress | **Hard dependency** — PFS requires resolution of both an auth endpoint and an API endpoint per Receiver. If EPC is not delivered, an interim workaround is required. |
+| D2 | Token exchange capability added to the Apigee BaRS proxy (ServiceCallout policies)                 | Not started | **Blocker** — current proxy has no token exchange capability                                                                                                         |
+| D3 | APIM team to apply proxy policy changes for PFS traffic                                            | Not started | Delay risk — APIM team capacity is a constraint                                                                                                                      |
+| D4 | Receiver suppliers implement AuthZ servers                                                         | Not started | Delay — phased rollout; early suppliers first                                                                                                                        |
 
 ### Interim workarounds for auth endpoint resolution (pre-EPC)
 
 If the EPC is not production-ready when PFS development needs to proceed, the following can unblock early development:
 
-| Workaround | Description | Suitability |
-|-----------|-------------|-------------|
-| Separate `auth-targets.json` | A second JSON file mapping DOS service IDs to auth URLs, read alongside `targets.json` | Development / INT testing |
-| Hardcoded config per Receiver | Auth URLs in Apigee KVM or environment variables for 1–3 pilot Receivers | Limited pilot |
+
+| Workaround                    | Description                                                                           | Suitability               |
+| ------------------------------- | --------------------------------------------------------------------------------------- | --------------------------- |
+| Separate`auth-targets.json`   | A second JSON file mapping DOS service IDs to auth URLs, read alongside`targets.json` | Development / INT testing |
+| Hardcoded config per Receiver | Auth URLs in Apigee KVM or environment variables for 1–3 pilot Receivers             | Limited pilot             |
 
 These are scaffolding — to be removed once the EPC is live.
 
 ### Open issues
 
-| ID | Issue | Impact |
-|----|-------|--------|
-| I1 | `NHSD-End-User-Organisation` header handling for PFS not yet confirmed | Blocks Receiver onboarding guidance |
-| I2 | OAuth scope model for patient-facing BaRS not yet agreed | Blocks PFA development and Receiver AuthZ implementation |
-| I3 | Receiver AuthZ server contract not specified | Receivers cannot begin implementation |
-| I4 | Delegated/proxy access model (parent booking for child) not defined | Cannot support family/carer scenarios at launch |
+
+| ID | Issue                                                                  | Impact                                                   |
+| ---- | ------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| I1 | `NHSD-End-User-Organisation` header handling for PFS not yet confirmed | Blocks Receiver onboarding guidance                      |
+| I2 | OAuth scope model for patient-facing BaRS not yet agreed               | Blocks PFA development and Receiver AuthZ implementation |
+| I3 | Receiver AuthZ server contract not specified                           | Receivers cannot begin implementation                    |
+| I4 | Delegated/proxy access model (parent booking for child) not defined    | Cannot support family/carer scenarios at launch          |
 
 ---
 
 ## Actions
-
-- [ ] Richard W, 18/08/2026, Confirm `NHSD-End-User-Organisation` header approach with NHS API Platform team and BaRS Core spec owners (I1)
-- [ ] Richard W, 18/08/2026, Define and agree OAuth scope model with NHS login and APIM teams (I2)
-- [ ] BaRS Architecture, 01/09/2026, Produce Receiver AuthZ server contract specification (I3)
-- [ ] BaRS Programme, 15/08/2026, Align PFS timeline with EPC delivery milestones
-- [ ] BaRS Engineering, 15/08/2026, Select and implement interim auth endpoint workaround to unblock development pending EPC
-- [ ] BaRS Engineering, 01/09/2026, Produce technical design for Apigee proxy extension (token exchange via ServiceCallout, EPC endpoint resolution)
-- [ ] BaRS Run & Maintain, 01/10/2026, Engage APIM team for PFS traffic routing and proxy policy changes
