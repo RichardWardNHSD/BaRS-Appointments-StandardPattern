@@ -7,24 +7,22 @@ This ADR records the decision on how patient-facing authentication will be intro
 The objective is to establish an authentication and authorisation pattern that:
 
 - enables patients to authenticate as themselves via NHS login and act on their own record
-- reuses the proven separate authentication and authorisation pattern from GP Connect Patient Facing Services (PFS D6)
+- reuses the proven separate authentication and authorisation pattern from GP Connect Patient Facing Services
 - maintains APIM as a single trusted origin for Receiver systems
 - minimises Receiver integration burden
 - unlocks patient-facing capabilities across multiple NHS programmes (National Diagnostic Service, Self-Referral, Screening, Vaccination booking)
 - can be delivered incrementally, with an interim tactical solution on the existing Apigee proxy and a longer-term evolution to an AWS-based proxy
 
-## Metadata
 
-
-| Field               | Value                                                                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Date**            | 04/08/2026                                                                                                                                                                    |
-| **Status**          | Proposed                                                                                                                                                                      |
-| **Deciders**        | Architecture, Engineering, Solution Assurance, Technical Review and Governance, Cyber Security, Information Governance                                                        |
-| **Significant**     | Interfaces, Nonfunctional characteristics, Dependencies, Structure                                                                                                            |
-| **Owners**          | BaRS Architecture (Richard W)                                                                                                                                                 |
-| **Decision**        | _Pending_                                                                                                                                                                     |
-| **Decision waiver** | Approved as a tactical solution with known audit and scalability limitations. Longer-term solution (Option 2 — AWS proxy) to be delivered alongside EPC programme. Tech Debt record to be created. |
+| Field               | Value                                                                                                                                                                                              |
+| ---------------------| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Date**            | 04/08/2026                                                                                                                                                                                         |
+| **Status**          | Proposed                                                                                                                                                                                           |
+| **Deciders**        | Architecture, Engineering, Solution Assurance, Technical Review and Governance, Cyber Security, Information Governance                                                                             |
+| **Significant**     | Interfaces, Nonfunctional characteristics, Dependencies, Structure                                                                                                                                 |
+| **Owners**          | [@Richard Ward](https://nhsd-confluence.digital.nhs.uk/display/~richard.ward23@nhs.net)                                                                                                            |
+| **Decision**        | _Pending_                                                                                                                                                                                          |
+| **Decision waiver** | Approved as a tactical solution with known scalability limitations. Longer-term solution (Option 2 — AWS proxy) to be delivered alongside EPC programme. Tech Debt record to be created. |
 
 ---
 
@@ -32,7 +30,7 @@ The objective is to establish an authentication and authorisation pattern that:
 
 The Booking and Referral Standard (BaRS) currently supports appointment management (searching slots, booking, viewing, updating, and cancelling appointments) in a business-to-business (B2B) context only. Healthcare systems call each other on behalf of clinicians and operators using application-restricted (system-to-system) credentials. There is no mechanism for a patient to authenticate as themselves and act on their own record.
 
-Multiple NHS programmes require patient-facing appointment capabilities through the NHS App — including the National Diagnostic Service, All Appointments in the App, Self-Referral, Screening, and Vaccination booking. All of these are blocked by the absence of patient authentication support in BaRS.
+Multiple NHS programmes require patient-facing appointment capabilities through the NHS App — including the GP Appointment Management, National Diagnostic Service, All Appointments in the App, Self-Referral, Screening, and Vaccination booking. All of these are blocked by the absence of patient authentication support in BaRS.
 
 The core BaRS Appointment Management API is built and in production. The missing capability is an authentication layer that supports citizen-initiated (B2C) requests using NHS login identity tokens.
 
@@ -44,7 +42,7 @@ The core BaRS Appointment Management API is built and in production. The missing
 
 ### Constraints
 
-- The current BaRS Proxy (Apigee-hosted) has no token exchange capability, no audit logging beyond Splunk (90-day, management info only), and uses static `targets.json` routing.
+- The current BaRS Proxy (Apigee-hosted) has no token exchange capability and uses static `targets.json` routing. The proxy logs transactions via Splunk (as it does today for B2B); GDPR and audit responsibilities sit with the Receiver (target system), not the proxy.
 - The Endpoint Catalogue (EPC) is a hard dependency for all options at production scale — `targets.json` is a one-dimensional lookup (service ID → single URL) and cannot support the two-endpoint model (auth URL + API URL per Receiver). Interim workarounds exist for development and limited pilot use but are not scalable.
 
 ---
@@ -66,25 +64,22 @@ The core BaRS Appointment Management API is built and in production. The missing
 ### 2.2.2 Drivers
 
 1. **Platform enablement:** Patient authentication through BaRS removes a single blocker for multiple patient-facing digital services (NHS App appointments, National Diagnostic Service, Self-Referral, Screening, Vaccination booking).
-2. **Proven pattern reuse:** The NHS login separate authentication and authorisation pattern is already established and proven in GP Connect Patient Facing Services (PFS D6).
+2. **Proven pattern reuse:** The NHS login separate authentication and authorisation pattern is already established and proven in GP Connect Patient Facing Services.
 3. **Existing API readiness:** The BaRS Appointment Management API already supports all required operations — only the authentication layer is missing.
-4. **Audit and compliance gap:** The current Apigee/Splunk infrastructure cannot support patient-facing audit requirements (no patient identity logging, 90-day retention only, no session correlation). A supplementary audit solution is needed.
-5. **Coordination with EPC migration:** Both PFS and EPC touch the same proxy codebase. These need to be treated as a single proxy evolution to avoid merge conflicts and duplicated effort.
 
 ### 2.2.3 Criteria
 
 
-| #   | Criterion                      | Description                                                                                                                                    |
-| -----| --------------------------------| ------------------------------------------------------------------------------------------------------------------------------------------------|
-| C1  | **Security**                   | Patient identity must be cryptographically verified; own-record-only access must be enforced; abuse prevention (rate limiting, bot prevention) |
-| C2  | **Standards compliance**       | Must follow established NHS patterns (NHS login separate auth, FHIR R4, BaRS specification)                                                    |
-| C3  | **Receiver burden**            | Minimise integration effort for Receiver suppliers; single trusted origin preferred                                                            |
-| C4  | **Operational sustainability** | Must support 12+ month audit retention; solution should be maintainable within existing platform capabilities                                  |
-| C5  | **Scalability**                | Must support the full estate of BaRS Receivers without per-supplier manual configuration                                                       |
-| C6  | **Delivery risk**              | Consider dependencies, team capacity, and phased delivery options                                                                              |
-| C7  | **Backwards compatibility**    | Must not break existing B2B BaRS flows                                                                                                         |
-| C8  | **Regulatory compliance**      | Must meet UK GDPR audit requirements (SAR responses, complaint investigation, accountability)                                                  |
-| C9  | **Strategic alignment**        | Should align with NHS England platform direction and the EPC programme                                                                         |
+| #  | Criterion                      | Description                                                                                                                                    |
+| ---- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1 | **Security**                   | Patient identity must be cryptographically verified; own-record-only access must be enforced; abuse prevention (rate limiting, bot prevention) |
+| C2 | **Standards compliance**       | Must follow established NHS patterns (NHS login separate auth, FHIR R4, BaRS specification)                                                    |
+| C3 | **Receiver burden**            | Minimise integration effort for Receiver suppliers; single trusted origin preferred                                                            |
+| C4 | **Operational sustainability** | Solution should be maintainable within existing platform capabilities                                                                          |
+| C5 | **Scalability**                | Must support the full estate of BaRS Receivers without per-supplier manual configuration                                                       |
+| C6 | **Delivery risk**              | Consider dependencies, team capacity, and phased delivery options                                                                              |
+| C7 | **Backwards compatibility**    | Must not break existing B2B BaRS flows                                                                                                         |
+| C8 | **Strategic alignment**        | Should align with NHS England platform direction and the EPC programme                                                                         |
 
 ### 2.2.4 Options
 
@@ -92,17 +87,90 @@ The core BaRS Appointment Management API is built and in production. The missing
 
 Add patient-facing support to the current Apigee-hosted BaRS Proxy using custom JavaScript policies or a ServiceCallout to an external Lambda for token exchange.
 
+##### Architecture — Option 1
 
-| Criterion                  | Assessment                                                                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Security                   | Token exchange possible but complex via Apigee policies                                                           |
-| Receiver burden            | Low — single proxy                                                                                               |
-| Operational sustainability | Adequate — Apigee is the established platform; Splunk audit limitations remain                                    |
-| Scalability                | Limited with `targets.json` workaround; Good once EPC is available                                                |
-| Delivery risk              | Low — uses existing platform and team knowledge; depends on APIM team capacity for policy changes                 |
-| Backwards compatibility    | Good — B2B flows unchanged                                                                                       |
-| Regulatory compliance      | Partial — Splunk has 90-day retention, no patient identity logging; supplementary audit solution needed            |
-| Strategic alignment        | Good — extends existing platform; aligns with incremental delivery                                                |
+```mermaid
+graph TD
+    subgraph PatientLayer["Patient Layer"]
+        P[Patient] --> PFA[Patient Facing App<br/>NHS App]
+    end
+
+    subgraph APIMLayer["APIM Layer (Apigee)"]
+        PFA -->|"APIM access token"| PROXY[Apigee BaRS Proxy<br/>+ PFS JavaScript Policies]
+        PROXY -->|"ServiceCallout"| LAMBDA[Token Exchange Lambda]
+        PROXY --> TARGETS["targets.json<br/>+ auth-targets.json<br/>(static routing)"]
+    end
+
+    subgraph AuthLayer["Authentication"]
+        PFA -->|"Credentials"| NL[NHS Login]
+        NL -->|"ID Token"| PFA
+        PFA -->|"ID Token"| APIM_AUTH[APIM AuthZ Service]
+        APIM_AUTH -->|"APIM Token"| PFA
+    end
+
+    subgraph ReceiverLayer["Receiver Layer"]
+        LAMBDA -->|"NHS Login ID Token"| REC_AUTH[Receiver AuthZ Server]
+        REC_AUTH -->|"Receiver Token"| LAMBDA
+        PROXY -->|"Request + Receiver Token"| REC_API[Receiver FHIR API]
+    end
+```
+
+
+
+```mermaid
+sequenceDiagram
+    participant Patient
+    participant NHSLogin as NHS Login
+    participant PFA as Patient Facing App<br/>(NHS App)
+    participant APIMAuth as APIM Authorisation<br/>Service
+    participant ApigeeProxy as Apigee BaRS Proxy
+    participant Lambda as Token Exchange<br/>Lambda (ServiceCallout)
+    participant TargetsJSON as targets.json /<br/>auth-targets.json
+    participant ReceiverAuth as Receiver AuthZ<br/>Server
+    participant ReceiverAPI as Receiver API
+
+    Note over Patient,NHSLogin: 1. Patient authenticates via NHS login
+    Patient->>NHSLogin: Enter credentials
+    NHSLogin-->>PFA: NHS login ID token
+
+    Note over PFA,APIMAuth: 2. PFA gets APIM access token
+    PFA->>APIMAuth: NHS login ID token
+    APIMAuth-->>PFA: APIM access token
+
+    Note over PFA,ApigeeProxy: 3. PFA calls BaRS API
+    PFA->>ApigeeProxy: API call + APIM access token + target service ID
+    ApigeeProxy->>ApigeeProxy: Validate APIM access token
+
+    Note over ApigeeProxy,TargetsJSON: 4. Endpoint lookup (static files)
+    ApigeeProxy->>TargetsJSON: Lookup API URL (targets.json)
+    TargetsJSON-->>ApigeeProxy: Receiver API URL
+    ApigeeProxy->>TargetsJSON: Lookup Auth URL (auth-targets.json / workaround)
+    TargetsJSON-->>ApigeeProxy: Receiver Auth URL
+
+    Note over ApigeeProxy,Lambda: 5. Token exchange via ServiceCallout
+    ApigeeProxy->>Lambda: NHS login ID token + Receiver Auth URL
+    Lambda->>ReceiverAuth: Token exchange request
+    ReceiverAuth-->>Lambda: Receiver access token
+    Lambda-->>ApigeeProxy: Receiver access token
+
+    Note over ApigeeProxy,ReceiverAPI: 6. Proxied API call
+    ApigeeProxy->>ReceiverAPI: API request + Receiver access token
+    ReceiverAPI-->>ApigeeProxy: API response
+    ApigeeProxy-->>PFA: Proxied API response
+```
+
+
+
+| Criterion                  | Assessment                                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Security                   | Token exchange possible but complex via Apigee policies                                                  |
+| Receiver burden            | Low — single proxy                                                                                      |
+| Operational sustainability | Adequate — Apigee is the established platform                                                            |
+| Scalability                | Limited with `targets.json` workaround; Good once EPC is available                                       |
+| Delivery risk              | Low — uses existing platform and team knowledge; depends on APIM team capacity for policy changes       |
+| Backwards compatibility    | Good — B2B flows unchanged                                                                              |
+| Regulatory compliance      | N/A at proxy level — GDPR and audit responsibilities sit with the Receiver (target system). Proxy logs transactions as it does today. |
+| Strategic alignment        | Good — extends existing platform; aligns with incremental delivery                                      |
 
 **Effort: M (Medium)**
 
@@ -110,37 +178,100 @@ Add patient-facing support to the current Apigee-hosted BaRS Proxy using custom 
 
 Replatform the BaRS Proxy to AWS (API Gateway + Lambda), designed from the start to support both B2B and patient-facing flows. Phased delivery: PFS traffic first, then migrate B2B traffic.
 
+##### Architecture — Option 2
 
-| Criterion                  | Assessment                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| Security                   | Purpose-built for token exchange; native token caching                             |
+
+```mermaid
+graph TD
+    subgraph PatientLayer["Patient Layer"]
+        P[Patient] --> PFA[Patient Facing App<br/>NHS App]
+    end
+
+    subgraph APIMLayer["APIM Layer"]
+        PFA -->|"APIM access token"| APIM[APIM Gateway]
+    end
+
+    subgraph AuthLayer["Authentication"]
+        PFA -->|"Credentials"| NL[NHS Login]
+        NL -->|"ID Token"| PFA
+        PFA -->|"ID Token"| APIM_AUTH[APIM AuthZ Service]
+        APIM_AUTH -->|"APIM Token"| PFA
+    end
+
+    subgraph AWSLayer["AWS Proxy Layer"]
+        APIM -->|"Route"| APIGW[API Gateway]
+        APIGW --> LAMBDA[Proxy Lambda<br/>Token Exchange + Routing]
+        LAMBDA --> CACHE[Token Cache<br/>DynamoDB TTL]
+        LAMBDA --> EPC[Endpoint Catalogue<br/>Dynamic Resolution]
+    end
+
+    subgraph ReceiverLayer["Receiver Layer"]
+        LAMBDA -->|"NHS Login ID Token"| REC_AUTH[Receiver AuthZ Server]
+        REC_AUTH -->|"Receiver Token"| LAMBDA
+        LAMBDA -->|"Request + Receiver Token"| REC_API[Receiver FHIR API]
+    end
+```
+
+
+```mermaid
+sequenceDiagram
+    participant Patient
+    participant NHSLogin as NHS Login
+    participant PFA as Patient Facing App<br/>(NHS App)
+    participant APIMAuth as APIM Authorisation<br/>Service
+    participant APIM as APIM Gateway<br/>(routes to AWS)
+    participant AWSProxy as AWS BaRS Proxy<br/>(API Gateway + Lambda)
+    participant TokenCache as Token Cache<br/>(DynamoDB / In-Memory)
+    participant EPC as Endpoint Catalogue<br/>Service
+    participant ReceiverAuth as Receiver AuthZ<br/>Server
+    participant ReceiverAPI as Receiver API
+
+    Note over Patient,NHSLogin: 1. Patient authenticates via NHS login
+    Patient->>NHSLogin: Enter credentials
+    NHSLogin-->>PFA: NHS login ID token
+
+    Note over PFA,APIMAuth: 2. PFA gets APIM access token
+    PFA->>APIMAuth: NHS login ID token
+    APIMAuth-->>PFA: APIM access token
+
+    Note over PFA,APIM: 3. PFA calls BaRS API (via APIM)
+    PFA->>APIM: API call + APIM access token
+    APIM->>AWSProxy: Route to AWS backend
+
+    Note over AWSProxy,EPC: 4. Dynamic endpoint resolution
+    AWSProxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|{id}<br/>&connectionType=oauth2-token-exchange
+    EPC-->>AWSProxy: Auth endpoint URL
+    AWSProxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|{id}<br/>&connectionType=hl7-fhir-rest
+    EPC-->>AWSProxy: API endpoint URL
+
+    Note over AWSProxy,ReceiverAuth: 5. Token exchange (with caching)
+    AWSProxy->>TokenCache: Check for cached Receiver token
+    alt Token not cached
+        AWSProxy->>ReceiverAuth: NHS login ID token + client credentials
+        ReceiverAuth-->>AWSProxy: Receiver access token
+        AWSProxy->>TokenCache: Cache token (TTL)
+    end
+
+    Note over AWSProxy,ReceiverAPI: 6. Proxied API call
+    AWSProxy->>ReceiverAPI: API request + Receiver access token
+    ReceiverAPI-->>AWSProxy: API response
+    AWSProxy-->>APIM: Response
+    APIM-->>PFA: Proxied API response
+```
+
+
+| Criterion                  | Assessment                                                                        |
+| ----------------------------| -----------------------------------------------------------------------------------|
+| Security                   | Purpose-built for token exchange; native token caching                            |
 | Receiver burden            | Low — single trusted origin (APIM); same pattern as GP Connect PFS                |
-| Operational sustainability | Good — CloudWatch logging, 12+ month retention, not Splunk-dependent              |
+| Operational sustainability | Good — purpose-built on AWS with CloudWatch for operational logging                |
 | Scalability                | Good — dynamic endpoint resolution via EPC                                        |
 | Delivery risk              | Medium-High — requires building a new service and phased migration                |
 | Backwards compatibility    | Good — phased approach means B2B traffic remains on Apigee until new proxy proven |
-| Regulatory compliance      | Good — structured audit logging with patient identity meets GDPR requirements     |
-| Strategic alignment        | Good — aligns with EPC migration and longer-term platform evolution                 |
+| Regulatory compliance      | N/A at proxy level — GDPR and audit responsibilities sit with the Receiver        |
+| Strategic alignment        | Good — aligns with EPC migration and longer-term platform evolution               |
 
 **Effort: L (Large)**
-
-#### Option 3 — Hybrid: new proxy for PFS only, existing Apigee for B2B (permanent)
-
-Run two proxies permanently: Apigee for B2B, new AWS proxy for patient-facing traffic.
-
-
-| Criterion                  | Assessment                                                        |
-| ---------------------------- | ------------------------------------------------------------------- |
-| Security                   | PFS proxy purpose-built — good                                   |
-| Receiver burden            | Higher — Receivers may need to interact with both                |
-| Operational sustainability | Poor — two platforms to maintain, inconsistent operational model |
-| Scalability                | Moderate — EPC serves both but operational complexity increases  |
-| Delivery risk              | Lower initial risk (no B2B migration) but higher long-term cost   |
-| Backwards compatibility    | Excellent — B2B completely untouched                             |
-| Regulatory compliance      | Good for PFS; existing B2B audit gaps remain                      |
-| Strategic alignment        | Partial — delays full platform migration                         |
-
-**Effort: L (Large, with ongoing operational overhead)**
 
 ### 2.2.5 Recommendation
 
@@ -159,25 +290,22 @@ This is a **reversible** decision. Option 1 can be superseded by Option 2 once t
 ### 2.2.6 Rationale
 
 
-| Criterion                     | Option 1 (Extend Apigee) | Option 2 (New AWS, phased) | Option 3 (Hybrid, permanent) |
-| ------------------------------- | -------------------------- | ---------------------------- | ------------------------------ |
-| C1 Security                   | Adequate                 | Strong                     | Strong (PFS)                 |
-| C2 Standards                  | Adequate                 | Strong                     | Adequate                     |
-| C3 Receiver burden            | Low                      | Low                        | Medium                       |
-| C4 Operational sustainability | Adequate                 | Good                       | Poor (two platforms)         |
-| C5 Scalability                | Limited                  | Good                       | Moderate                     |
-| C6 Delivery risk              | Low                      | Medium-High                | Medium                       |
-| C7 Backwards compatibility    | Good                     | Good (phased)              | Excellent                    |
-| C8 Regulatory compliance      | Partial (needs supplement) | Good                     | Partial                      |
-| C9 Strategic alignment        | Good                     | Good                       | Partial                      |
+| Criterion                     | Option 1 (Extend Apigee)   | Option 2 (New AWS, phased) |
+| ------------------------------- | ---------------------------- | ---------------------------- |
+| C1 Security                   | Adequate                   | Strong                     |
+| C2 Standards                  | Adequate                   | Strong                     |
+| C3 Receiver burden            | Low                        | Low                        |
+| C4 Operational sustainability | Adequate                   | Good                       |
+| C5 Scalability                | Limited                    | Good                       |
+| C6 Delivery risk              | Low                        | Medium-High                |
+| C7 Backwards compatibility    | Good                       | Good (phased)              |
+| C8 Strategic alignment        | Good                       | Good                       |
 
-Option 1 is recommended as the near-term approach because it has the lowest delivery risk (C6), maintains full backwards compatibility (C7), can be delivered using existing platform knowledge and team capacity, and aligns with the current platform (C9). Its limitations in scalability (C5) and audit compliance (C8) are addressed through interim workarounds and supplementary logging respectively, with Option 2 planned as the longer-term evolution.
+Option 1 is recommended as the near-term approach because it has the lowest delivery risk (C6), maintains full backwards compatibility (C7), can be delivered using existing platform knowledge and team capacity, and aligns with the current platform (C8). Its limitations in scalability (C5) are addressed through interim workarounds, with Option 2 planned as the longer-term evolution.
 
 Option 2 addresses all criteria strongly and remains the longer-term target. However, its higher delivery risk and dependency on EPC completion make it unsuitable as the immediate next step when patient-facing capabilities are needed sooner.
 
-Option 3 is ruled out because it creates permanent operational complexity without a path to consolidation.
-
-**Key constraint acknowledged:** Option 1 cannot fully meet regulatory compliance requirements (C8 — audit) using Splunk alone. An interim audit solution (e.g., supplementary CloudWatch logging for PFS-specific requests routed via Lambda) must be included in the Option 1 delivery scope. This is tracked as a condition of approval.
+**Note on audit and GDPR:** GDPR compliance and audit responsibilities for patient data sit with the Receiver (target system), not the proxy. The proxy logs transactions for operational purposes (as it does today for B2B traffic). This ADR does not introduce new audit requirements for the proxy layer.
 
 ---
 
@@ -194,7 +322,6 @@ Option 3 is ruled out because it creates permanent operational complexity withou
 
 ### Negative / Trade-offs
 
-- **Splunk audit limitations** — Splunk cannot meet full UK GDPR audit requirements (90-day retention, no patient identity logging). An interim supplementary audit solution is required, adding scope.
 - **Scalability constraints** — static `targets.json` routing requires interim workarounds for the two-endpoint model (auth + API URLs). These workarounds are acceptable for a limited pilot but not at full scale.
 - **Coordination required** — both PFS and EPC migration touch the same proxy codebase; must be actively coordinated.
 - **Tech debt created** — Option 1 delivery creates tech debt that must be retired when Option 2 is delivered. A Tech Debt record is required.
@@ -218,16 +345,13 @@ Option 3 is ruled out because it creates permanent operational complexity withou
 | ------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------- |
 | Patient can authenticate and book an appointment via NHS App end-to-end | Functional in INT environment      | Integration test suite                     |
 | Token exchange latency                                                  | < 500ms p95                        | CloudWatch metrics                         |
-| Audit log contains patient NHS Number for every PFS request             | 100% of requests                   | Automated log validation                   |
-| Audit log retention                                                     | 12+ months                         | CloudWatch Logs retention policy           |
 | Own-record enforcement                                                  | Zero cross-patient access          | Penetration testing + automated validation |
 | Receiver onboarding (first Receiver)                                    | Medicus live on PFS                | Assurance process completion               |
-| B2B traffic unaffected during Phase 1                                   | Zero regression in B2B error rates | Existing monitoring dashboards             |
+| B2B traffic unaffected                                                  | Zero regression in B2B error rates | Existing monitoring dashboards             |
 
 ### Fitness function
 
 - Automated integration tests in the INT environment that exercise the full patient-facing flow (NHS login → APIM token → token exchange → Receiver API call).
-- Audit log completeness check: a scheduled job validates that every PFS request has a corresponding audit entry with patient identity fields populated.
 - Security scan: periodic penetration test of the patient-facing endpoint to verify own-record enforcement and abuse prevention controls.
 
 ---
@@ -256,7 +380,6 @@ Option 3 is ruled out because it creates permanent operational complexity withou
 | D2 | Token exchange capability in the proxy (Apigee ServiceCallout/Lambda for Option 1)                 | Not started | **Blocker** — current Apigee proxy has no token exchange capability; must be added via custom policies or external compute                                                                                                                              |
 | D3 | APIM team to apply proxy policy changes for PFS traffic                                            | Not started | Delay risk — APIM team capacity is a constraint                                                                                                                                                                                                         |
 | D4 | Receiver suppliers implement AuthZ servers and update firewall rules                               | Not started | Delay — phased rollout; early suppliers first                                                                                                                                                                                                           |
-| D5 | DPIA approval for patient-level audit logging                                                      | Not started | Delay — PFS can launch without but would not meet regulatory expectations                                                                                                                                                                               |
 
 ### Interim workarounds for auth endpoint resolution (pre-EPC)
 
@@ -341,13 +464,12 @@ For **production at scale**: None of these workarounds are acceptable. The EPC r
 | ---- | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
 | I1 | `NHSD-End-User-Organisation` header handling for PFS (Option A/B/C/D) | Blocks Receiver onboarding guidance                      |
 | I2 | OAuth scope model for patient-facing BaRS not yet agreed              | Blocks PFA development and Receiver AuthZ implementation |
-| I3 | No DPIA for patient-level audit logging                               | Cannot log patient NHS Number until IG approval          |
-| I4 | Receiver AuthZ server contract not specified                          | Receivers cannot begin implementation                    |
-| I5 | Delegated/proxy access model (parent booking for child) not defined   | Cannot support family/carer scenarios at launch          |
+| I3 | Receiver AuthZ server contract not specified                          | Receivers cannot begin implementation                    |
+| I4 | Delegated/proxy access model (parent booking for child) not defined   | Cannot support family/carer scenarios at launch          |
 
 ### Risk note
 
-This decision is tactically sound but creates acknowledged tech debt. Option 1 extends the existing Apigee proxy, which has known audit limitations (Splunk 90-day retention, no patient identity logging) that require supplementary solutions. The transition to Option 2 (AWS proxy) should be tracked via a Tech Debt record and aligned with the EPC migration programme timeline.
+This decision is tactically sound but creates acknowledged tech debt. Option 1 extends the existing Apigee proxy, and the transition to Option 2 (AWS proxy) should be tracked via a Tech Debt record and aligned with the EPC migration programme timeline.
 
 The EPC (D1) is a hard dependency for all options at production scale. If the EPC delivery slips, interim workarounds (Workaround 2 or 4 above) can unblock development and a limited pilot, but they introduce additional tech debt and manual maintenance overhead. The workaround chosen should be documented and treated as scaffolding with a defined removal date.
 
@@ -357,13 +479,11 @@ The EPC (D1) is a hard dependency for all options at production scale. If the EP
 
 - [ ] Richard W, 18/08/2026, Confirm `NHSD-End-User-Organisation` header approach with NHS API Platform team and BaRS Core spec owners (Issue I1)
 - [ ] Richard W, 18/08/2026, Define and agree OAuth scope model with NHS login and APIM teams (Issue I2)
-- [ ] BaRS Architecture, 01/09/2026, Produce Receiver AuthZ server contract specification (Issue I4)
-- [ ] IG Lead, 01/09/2026, Commission DPIA for PFS audit data (Issue I3)
+- [ ] BaRS Architecture, 01/09/2026, Produce Receiver AuthZ server contract specification (Issue I3)
 - [ ] BaRS Programme, 15/08/2026, Align PFS timeline with EPC delivery milestones; escalate if EPC slips
 - [ ] BaRS Engineering, 15/08/2026, Select and implement interim auth endpoint resolution workaround (Workaround 2 or 4 recommended) to unblock development pending EPC delivery
 - [ ] BaRS Engineering, 01/09/2026, Produce technical design for Apigee proxy extension (Option 1 — token exchange via ServiceCallout/Lambda, interim endpoint resolution)
-- [ ] BaRS Engineering, 01/09/2026, Define interim audit logging approach to supplement Splunk for PFS requests
-- [ ] BaRS Architecture, 01/10/2026, Produce technical design for strategic AWS proxy (Option 2) aligned with EPC migration
+- [ ] BaRS Architecture, 01/10/2026, Produce technical design for AWS proxy (Option 2) aligned with EPC migration
 - [ ] BaRS Programme, 01/09/2026, Create Tech Debt record for transition from Option 1 (Apigee) to Option 2 (AWS proxy)
 - [ ] BaRS Programme, 01/09/2026, Create Tech Debt record for interim auth endpoint workaround — to be retired when EPC is live
 - [ ] BaRS Run & Maintain, 01/10/2026, Engage APIM team for PFS traffic routing and proxy policy changes
