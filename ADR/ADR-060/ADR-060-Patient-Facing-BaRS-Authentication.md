@@ -85,7 +85,7 @@ The core BaRS Appointment Management API is built and in production. The missing
 
 #### Option 1 — Extend the existing Apigee proxy
 
-Add patient-facing support to the current Apigee-hosted BaRS Proxy using custom JavaScript policies or a ServiceCallout to an external Lambda for token exchange.
+Add patient-facing support to the current Apigee-hosted BaRS Proxy. The proxy handles the token exchange directly with the Receiver's AuthZ server (no intermediate Lambda). Endpoint resolution uses the Endpoint Catalogue (EPC), which resides in AWS but is accessed via an Apigee proxy.
 
 ##### Architecture — Option 1
 
@@ -95,12 +95,6 @@ graph TD
         P[Patient] --> PFA[Patient Facing App<br/>NHS App]
     end
 
-    subgraph APIMLayer["APIM Layer (Apigee)"]
-        PFA -->|"APIM access token"| PROXY[Apigee BaRS Proxy<br/>+ PFS JavaScript Policies]
-        PROXY -->|"ServiceCallout"| LAMBDA[Token Exchange Lambda]
-        PROXY --> TARGETS["targets.json<br/>+ auth-targets.json<br/>(static routing)"]
-    end
-
     subgraph AuthLayer["Authentication"]
         PFA -->|"Credentials"| NL[NHS Login]
         NL -->|"ID Token"| PFA
@@ -108,9 +102,19 @@ graph TD
         APIM_AUTH -->|"APIM Token"| PFA
     end
 
+    subgraph APIMLayer["APIM Layer (Apigee)"]
+        PFA -->|"APIM access token"| PROXY[Apigee BaRS Proxy<br/>+ PFS Policies]
+        PROXY -->|"Endpoint lookup<br/>(via Apigee EPC proxy)"| EPC_PROXY[Apigee EPC Proxy]
+    end
+
+    subgraph AWSLayer["AWS"]
+        EPC_PROXY -->|"Request"| EPC[Endpoint Catalogue<br/>Service]
+        EPC -->|"Auth + API endpoints"| EPC_PROXY
+    end
+
     subgraph ReceiverLayer["Receiver Layer"]
-        LAMBDA -->|"NHS Login ID Token"| REC_AUTH[Receiver AuthZ Server]
-        REC_AUTH -->|"Receiver Token"| LAMBDA
+        PROXY -->|"NHS Login ID Token"| REC_AUTH[Receiver AuthZ Server]
+        REC_AUTH -->|"Receiver Token"| PROXY
         PROXY -->|"Request + Receiver Token"| REC_API[Receiver FHIR API]
     end
 ```
@@ -124,8 +128,8 @@ sequenceDiagram
     participant PFA as Patient Facing App<br/>(NHS App)
     participant APIMAuth as APIM Authorisation<br/>Service
     participant ApigeeProxy as Apigee BaRS Proxy
-    participant Lambda as Token Exchange<br/>Lambda (ServiceCallout)
-    participant TargetsJSON as targets.json /<br/>auth-targets.json
+    participant EPCProxy as Apigee EPC Proxy
+    participant EPC as Endpoint Catalogue<br/>(AWS)
     participant ReceiverAuth as Receiver AuthZ<br/>Server
     participant ReceiverAPI as Receiver API
 
@@ -141,17 +145,15 @@ sequenceDiagram
     PFA->>ApigeeProxy: API call + APIM access token + target service ID
     ApigeeProxy->>ApigeeProxy: Validate APIM access token
 
-    Note over ApigeeProxy,TargetsJSON: 4. Endpoint lookup (static files)
-    ApigeeProxy->>TargetsJSON: Lookup API URL (targets.json)
-    TargetsJSON-->>ApigeeProxy: Receiver API URL
-    ApigeeProxy->>TargetsJSON: Lookup Auth URL (auth-targets.json / workaround)
-    TargetsJSON-->>ApigeeProxy: Receiver Auth URL
+    Note over ApigeeProxy,EPC: 4. Endpoint lookup via EPC
+    ApigeeProxy->>EPCProxy: Lookup endpoints for target service
+    EPCProxy->>EPC: GET /Endpoint?HealthcareService.Identifier=...
+    EPC-->>EPCProxy: Auth endpoint + API endpoint
+    EPCProxy-->>ApigeeProxy: Receiver Auth URL + Receiver API URL
 
-    Note over ApigeeProxy,Lambda: 5. Token exchange via ServiceCallout
-    ApigeeProxy->>Lambda: NHS login ID token + Receiver Auth URL
-    Lambda->>ReceiverAuth: Token exchange request
-    ReceiverAuth-->>Lambda: Receiver access token
-    Lambda-->>ApigeeProxy: Receiver access token
+    Note over ApigeeProxy,ReceiverAuth: 5. Token exchange (proxy calls Receiver AuthZ directly)
+    ApigeeProxy->>ReceiverAuth: NHS login ID token + client credentials
+    ReceiverAuth-->>ApigeeProxy: Receiver access token
 
     Note over ApigeeProxy,ReceiverAPI: 6. Proxied API call
     ApigeeProxy->>ReceiverAPI: API request + Receiver access token
@@ -163,10 +165,10 @@ sequenceDiagram
 
 | Criterion                  | Assessment                                                                                               |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Security                   | Token exchange possible but complex via Apigee policies                                                  |
+| Security                   | Token exchange handled directly by proxy using Apigee policies                                           |
 | Receiver burden            | Low — single proxy                                                                                      |
 | Operational sustainability | Adequate — Apigee is the established platform                                                            |
-| Scalability                | Limited with `targets.json` workaround; Good once EPC is available                                       |
+| Scalability                | Good — dynamic endpoint resolution via EPC (accessed through Apigee EPC proxy)                           |
 | Delivery risk              | Low — uses existing platform and team knowledge; depends on APIM team capacity for policy changes       |
 | Backwards compatibility    | Good — B2B flows unchanged                                                                              |
 | Regulatory compliance      | N/A at proxy level — GDPR and audit responsibilities sit with the Receiver (target system). Proxy logs transactions as it does today. |
@@ -264,7 +266,7 @@ sequenceDiagram
 | ----------------------------| -----------------------------------------------------------------------------------|
 | Security                   | Purpose-built for token exchange; native token caching                            |
 | Receiver burden            | Low — single trusted origin (APIM); same pattern as GP Connect PFS                |
-| Operational sustainability | Good — purpose-built on AWS with CloudWatch for operational logging                |
+| Operational sustainability | Good — purpose-built on AWS with CloudWatch for operational logging               |
 | Scalability                | Good — dynamic endpoint resolution via EPC                                        |
 | Delivery risk              | Medium-High — requires building a new service and phased migration                |
 | Backwards compatibility    | Good — phased approach means B2B traffic remains on Apigee until new proxy proven |
@@ -296,12 +298,12 @@ This is a **reversible** decision. Option 1 can be superseded by Option 2 once t
 | C2 Standards                  | Adequate                   | Strong                     |
 | C3 Receiver burden            | Low                        | Low                        |
 | C4 Operational sustainability | Adequate                   | Good                       |
-| C5 Scalability                | Limited                    | Good                       |
+| C5 Scalability                | Good (via EPC)             | Good                       |
 | C6 Delivery risk              | Low                        | Medium-High                |
 | C7 Backwards compatibility    | Good                       | Good (phased)              |
 | C8 Strategic alignment        | Good                       | Good                       |
 
-Option 1 is recommended as the near-term approach because it has the lowest delivery risk (C6), maintains full backwards compatibility (C7), can be delivered using existing platform knowledge and team capacity, and aligns with the current platform (C8). Its limitations in scalability (C5) are addressed through interim workarounds, with Option 2 planned as the longer-term evolution.
+Option 1 is recommended as the near-term approach because it has the lowest delivery risk (C6), maintains full backwards compatibility (C7), can be delivered using existing platform knowledge and team capacity, and aligns with the current platform (C8). Both options use the EPC for endpoint resolution, so scalability (C5) is equivalent.
 
 Option 2 addresses all criteria strongly and remains the longer-term target. However, its higher delivery risk and dependency on EPC completion make it unsuitable as the immediate next step when patient-facing capabilities are needed sooner.
 
@@ -322,7 +324,7 @@ Option 2 addresses all criteria strongly and remains the longer-term target. How
 
 ### Negative / Trade-offs
 
-- **Scalability constraints** — static `targets.json` routing requires interim workarounds for the two-endpoint model (auth + API URLs). These workarounds are acceptable for a limited pilot but not at full scale.
+- **EPC dependency** — endpoint resolution relies on the EPC being available (accessed via the Apigee EPC proxy). If EPC is not production-ready, interim workarounds (see below) are needed for early development and pilot.
 - **Coordination required** — both PFS and EPC migration touch the same proxy codebase; must be actively coordinated.
 - **Tech debt created** — Option 1 delivery creates tech debt that must be retired when Option 2 is delivered. A Tech Debt record is required.
 - **Open design decisions remain** — `NHSD-End-User-Organisation` header handling, OAuth scope model, Receiver AuthZ server contract, and delegated access model all require further resolution.
@@ -377,7 +379,7 @@ Option 2 addresses all criteria strongly and remains the longer-term target. How
 | ID | Dependency                                                                                         | Status      | Impact                                                                                                                                                                                                                                                   |
 | ---- | ---------------------------------------------------------------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D1 | Endpoint Catalogue (EPC) — multi-endpoint resolution with`connectionType`/`payloadType` filtering | In progress | **Hard dependency for all options** — PFS requires resolution of both an auth endpoint and an API endpoint per Receiver. `targets.json` cannot support this two-endpoint model. If EPC is not delivered, an interim workaround is required (see below). |
-| D2 | Token exchange capability in the proxy (Apigee ServiceCallout/Lambda for Option 1)                 | Not started | **Blocker** — current Apigee proxy has no token exchange capability; must be added via custom policies or external compute                                                                                                                              |
+| D2 | Token exchange capability in the proxy (Apigee policies for Option 1)                              | Not started | **Blocker** — current Apigee proxy has no token exchange capability; must be added via Apigee policies (e.g. ServiceCallout to Receiver AuthZ server)                                                                                                   |
 | D3 | APIM team to apply proxy policy changes for PFS traffic                                            | Not started | Delay risk — APIM team capacity is a constraint                                                                                                                                                                                                         |
 | D4 | Receiver suppliers implement AuthZ servers and update firewall rules                               | Not started | Delay — phased rollout; early suppliers first                                                                                                                                                                                                           |
 
@@ -482,7 +484,7 @@ The EPC (D1) is a hard dependency for all options at production scale. If the EP
 - [ ] BaRS Architecture, 01/09/2026, Produce Receiver AuthZ server contract specification (Issue I3)
 - [ ] BaRS Programme, 15/08/2026, Align PFS timeline with EPC delivery milestones; escalate if EPC slips
 - [ ] BaRS Engineering, 15/08/2026, Select and implement interim auth endpoint resolution workaround (Workaround 2 or 4 recommended) to unblock development pending EPC delivery
-- [ ] BaRS Engineering, 01/09/2026, Produce technical design for Apigee proxy extension (Option 1 — token exchange via ServiceCallout/Lambda, interim endpoint resolution)
+- [ ] BaRS Engineering, 01/09/2026, Produce technical design for Apigee proxy extension (Option 1 — token exchange via Apigee policies, EPC endpoint resolution via Apigee EPC proxy)
 - [ ] BaRS Architecture, 01/10/2026, Produce technical design for AWS proxy (Option 2) aligned with EPC migration
 - [ ] BaRS Programme, 01/09/2026, Create Tech Debt record for transition from Option 1 (Apigee) to Option 2 (AWS proxy)
 - [ ] BaRS Programme, 01/09/2026, Create Tech Debt record for interim auth endpoint workaround — to be retired when EPC is live
