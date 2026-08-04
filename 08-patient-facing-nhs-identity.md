@@ -322,7 +322,7 @@ Base64-encoded: `eyJyZXNvdXJjZVR5cGUiOiJPcmdhbml6YXRpb24iLCJpZGVudGlmaWVyIjpbeyJ
 | Validates header is present | ✅ No change — header is present |
 | Validates ODS code format | ✅ No change — valid ODS code |
 | Uses ODS code for ownership/access control | ⚠️ Receiver must recognise the APIM ODS code as a permitted "sender" for patient-facing flows. This is part of onboarding. |
-| Uses ODS code for audit | ✅ Audit records show APIM as the origin. Patient identity is audited separately from the token. |
+| Uses ODS code for audit | ✅ Audit records show APIM as the origin. Patient identity is audited by the Receiver from the access token. |
 | Applies org-specific business rules | ⚠️ Receiver should not apply org-specific rules to the platform code — patient-facing access should have its own rule set |
 
 #### Decision needed
@@ -404,53 +404,43 @@ The Receiver's `/metadata` response should indicate support for patient-facing i
 
 ### 9. Audit and Logging
 
-#### What patient-facing interactions must record
+#### Responsibility model
 
-> **Note:** The following list is a proposed set of audit fields based on first principles — specifically, what would be needed to respond to a Subject Access Request, investigate a patient complaint, or demonstrate GDPR accountability. It is not drawn from an existing published NHS specification. It should be validated with the IG team and formalised as part of the PFS DPIA (see Issue I3 in the RAID log).
->
-> **Basis for inclusion:**
-> - [UK GDPR Article 5(2) — Accountability principle](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/accountability-and-governance/accountability-framework/) — organisations must demonstrate compliance with data protection principles
-> - [NHS API Producer Guidance (PXY-4)](https://nhsdigital.github.io/national-proxy-service-integration-docs/patient-facing-journeys/api-producer-guidance) — audit both `sub` (patient) and `act` (proxy/actor) correctly
-> - [PFS D6 — Auth Token Exchange](https://nhsd-confluence.digital.nhs.uk/display/DCA/PFS+D6+-+Auth+Token+Exchange) — implies audit capability for the token exchange flow but does not prescribe specific fields
-> - [ICO guidance on Subject Access Requests](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/right-of-access/) — organisations must be able to identify and retrieve all processing related to a data subject
+GDPR compliance and audit responsibilities for patient data sit with the **Receiver (target system)**, not the proxy. The BaRS proxy logs transactions for operational purposes (request IDs, correlation IDs, response status, latency) as it does today for B2B traffic. It does not log patient-identifiable information.
 
-Patient-facing interactions must record:
+The Receiver is the data controller/processor for the patient's appointment data and is responsible for:
 
-- The authenticated patient's NHS Number (from the NHS login ID token)
+- Maintaining audit trails of patient data access (who accessed what, when)
+- Responding to Subject Access Requests (SARs)
+- Complaint investigation (linking actions to authenticated patient identity)
+- Retention policies appropriate to health data
+
+This is consistent with the existing B2B model where Receivers are responsible for their own audit and the proxy operates as a routing/authentication intermediary.
+
+#### What the proxy logs (operational)
+
+The proxy continues to log at the same level as today:
+
+- APIM request ID and correlation ID (`X-Request-Id`, `X-Correlation-Id`)
+- Target service identifier
+- HTTP method and path
+- Response status code
+- Latency
+- Token exchange outcome (success/failure) for troubleshooting purposes
+
+These logs are for operational monitoring and incident investigation at the platform level. They do not contain patient-identifiable data (NHS Number, name, etc.) and are not intended to serve as a clinical or patient-facing audit trail.
+
+#### Receiver audit responsibilities
+
+Receivers accepting patient-initiated bookings must maintain their own audit records that include:
+
+- The authenticated patient's NHS Number (from the Receiver access token)
 - The identity verification level (P9)
-- The patient-facing application identifier (client_id of the PFA)
-- Consent scopes granted
-- The APIM request ID and correlation ID
-- The token exchange outcome (success/failure with the Receiver AuthZ server)
-- The Receiver's response status
+- The action performed (book, view, cancel)
+- Timestamp
+- Outcome (success/failure)
 
-This is critical for UK GDPR compliance, investigating complaints, and evidencing patient access patterns.
-
-#### Current state — limitations of Splunk logging
-
-Today, the BaRS Proxy **has no audit or logging capability of its own**. All logging comes from the Apigee platform layer, which writes to Splunk. This logging was designed for API traffic monitoring, not business or clinical audit. Its limitations for patient-facing flows are significant:
-
-| Limitation | Impact on PFS |
-|-----------|---------------|
-| **No payload inspection** | Cannot log patient NHS Number, scopes, or identity claims — these are inside the token, not in logged headers |
-| **DPIA restricts use to management information** | Even if data were captured, using it for patient-level audit may require a new DPIA or amendment |
-| **90-day rolling retention** | Cannot meet UK GDPR retention requirements for access audit (typically 12+ months) |
-| **No token exchange logging** | The Splunk logs do not capture the APIM-to-Receiver AuthZ exchange — only the inbound request from the PFA |
-| **Encoded identifiers** | ODS codes and service IDs are encoded and require manual processing — not viable for patient-level audit trails |
-| **No concept of "patient session"** | Cannot correlate multiple requests from the same patient into a single access session |
-
-#### What this means for PFS
-
-The current Apigee/Splunk infrastructure **cannot support patient-facing audit requirements**. Specifically:
-
-1. **Subject Access Requests (SARs):** If a patient asks "who accessed my data?", the current logs cannot answer this — the patient's NHS Number is not logged.
-2. **Complaint investigation:** If a patient disputes a booking or cancellation, there is no audit trail linking the action to their authenticated identity.
-3. **Regulatory compliance:** The ICO expects organisations processing health data to maintain access logs. The 90-day window is insufficient.
-4. **Token exchange failures:** If the Receiver's AuthZ server rejects the token exchange, there is no record of this for troubleshooting.
-
-#### Implication
-
-Patient-facing BaRS **requires a purpose-built audit capability** that does not currently exist in the Apigee proxy. This is one of the drivers for replatforming (see Section 11 below).
+This ensures that SARs, complaint investigations, and regulatory obligations can be met by the system that holds and processes the patient data.
 
 ### 10. Rate Limiting and Abuse Prevention
 
@@ -471,10 +461,9 @@ The BaRS Proxy today is an **Apigee-hosted routing layer** with significant cons
 
 - **Static routing** via `targets.json` (flat file mapping DOS service IDs to Receiver URLs)
 - **No application logic** — Apigee policies handle token validation and routing, but there is no Lambda/compute layer for complex operations like token exchange
-- **No audit logging of its own** — relies entirely on Apigee platform logs → Splunk (90-day, management info only)
+- **No audit logging of its own** — relies on Apigee platform logs → Splunk (operational/management info)
 - **No concept of user identity** — the proxy handles application-restricted (B2B) tokens only
 - **No caching infrastructure** — cannot cache token exchange results between requests
-- **NHS England is moving away from Splunk** — the current observability platform has a limited future
 
 #### The question: extend or rebuild?
 
@@ -487,11 +476,8 @@ Add patient-facing support to the current Apigee-hosted BaRS Proxy.
 | Pros | Cons |
 |------|------|
 | Familiar platform — team already knows Apigee | Apigee does not natively support the token exchange pattern (would require custom JavaScript policies or a ServiceCallout to an external Lambda) |
-| B2B flows continue unchanged | No audit logging — still limited to Splunk with all its constraints |
-| Single proxy for both B2B and B2C | Cannot meet PFS audit requirements (patient NHS Number, session correlation, 12-month retention) |
-| | Static `targets.json` routing cannot support the additional auth endpoint lookup needed for PFS |
-| | APIM team capacity is a constraint — changes to Apigee proxies depend on the platform team |
-| | NHS England is migrating away from Apigee/Splunk — investment here has a limited lifespan |
+| B2B flows continue unchanged | Static `targets.json` routing cannot support the additional auth endpoint lookup needed for PFS (resolved by EPC) |
+| Single proxy for both B2B and B2C | APIM team capacity is a constraint — changes to Apigee proxies depend on the platform team |
 
 ##### Option B — Build a new proxy (AWS) with B2B and B2C support
 
@@ -500,13 +486,11 @@ Replatform the BaRS Proxy to AWS (API Gateway + Lambda), designed from the start
 | Pros | Cons |
 |------|------|
 | Purpose-built for token exchange (Lambda can execute the multi-step auth flow natively) | Requires building and operating a new service |
-| Built-in audit logging (CloudWatch, structured JSON, 12-month+ retention) — meets PFS requirements | Migration risk — existing B2B traffic must be cut over |
-| Dynamic endpoint resolution via Endpoint Catalogue API (already being built) | Parallel running period where both proxies are live |
-| Supports both B2B and B2C from day one | Requires APIM team to route traffic to the new backend |
-| Token caching (in-memory or DynamoDB TTL) reduces Receiver AuthZ load | **Supplier impact: traffic originates from AWS (different IP range)** — Receivers that whitelist by IP will need to update their firewalls |
-| Observable (CloudWatch + Grafana, not Splunk-dependent) | |
+| Dynamic endpoint resolution via Endpoint Catalogue API (already being built) | Migration risk — existing B2B traffic must be cut over |
+| Supports both B2B and B2C from day one | Parallel running period where both proxies are live |
+| Owned and operated by the BaRS team — no dependency on APIM team for logic changes | Requires APIM team to route traffic to the new backend |
+| Observable (CloudWatch + Grafana) | **Supplier impact: traffic originates from AWS (different IP range)** — Receivers that whitelist by IP will need to update their firewalls |
 | Aligns with the EPC migration already in progress | |
-| Owned and operated by the BaRS team — no dependency on APIM team for logic changes | |
 
 **⚠️ Supplier impact — change of origin IP:**
 
@@ -536,33 +520,32 @@ Run two proxies in parallel: the existing Apigee proxy for B2B traffic, and a ne
 
 #### Recommendation
 
-**Option B (new proxy with B2B and B2C)** is the recommended strategic direction:
+**Option A (extend the existing Apigee proxy)** is recommended as the near-term approach to unblock patient-facing capabilities (see [ADR-060a](ADR/ADR-060/ADR-060a-Patient-Facing-BaRS-Authentication.md)). **Option B (new AWS proxy)** remains the longer-term strategic direction but is out of scope for the initial PFS delivery.
 
-1. The existing Apigee proxy cannot meet PFS audit, token exchange, or dynamic routing requirements without significant workarounds
-2. The BaRS team is already building the Endpoint Catalogue on AWS — the new proxy is a natural companion
-3. NHS England is moving away from Apigee/Splunk — investing further in the current platform is counter-strategic
-4. A single proxy serving both B2B and B2C is operationally simpler than maintaining two
+The near-term approach:
+- Extends the existing Apigee proxy with token exchange capability (ServiceCallout to Receiver AuthZ servers)
+- Uses the EPC for endpoint resolution (via the Apigee EPC proxy)
+- Is additive — B2B traffic is unaffected
 
-**However**, the transition should be phased:
-- **Phase 1:** Build the new proxy with PFS support. Route patient-facing traffic to it via APIM. B2B traffic remains on the existing Apigee proxy.
-- **Phase 2:** Migrate B2B traffic to the new proxy once it is proven in production with PFS traffic.
+The longer-term transition to Option B should be phased:
+- **Phase 1:** Build the new proxy with PFS support. Route patient-facing traffic to it via APIM. B2B traffic remains on Apigee.
+- **Phase 2:** Migrate B2B traffic to the new proxy once proven.
 - **Phase 3:** Decommission the Apigee proxy.
 
-This is effectively Option C as a transition state towards Option B.
+Note: GDPR and audit responsibilities for patient data sit with the Receiver (target system), not the proxy. The proxy logs transactions for operational purposes only. This applies to both the current Apigee proxy and the future AWS proxy.
 
 #### What the new proxy needs for PFS
 
 | Capability | Required for PFS | Required for B2B | Notes |
 |-----------|-----------------|------------------|-------|
 | Token exchange (NHS login → Receiver token) | ✅ | ❌ | Core PFS capability |
-| Token caching | ✅ | ❌ | Reduces load on Receiver AuthZ servers |
 | Dynamic endpoint resolution (EPC) | ✅ | ✅ | Replaces targets.json for both |
 | Auth endpoint lookup (connectionType filter) | ✅ | ❌ | Needs the `oauth2-token-exchange` endpoint type |
-| Structured audit logging (patient identity) | ✅ | Desirable | Meets GDPR, SAR, and complaint investigation needs |
 | mTLS to Receivers | ✅ | ✅ | Same as today |
 | Application-restricted token validation | ❌ | ✅ | B2B only |
 | User-restricted token validation | ✅ | ❌ | PFS only |
 | Rate limiting (per-user) | ✅ | ❌ | Patient abuse prevention |
+| Operational logging | ✅ | ✅ | Transaction-level logging for operational monitoring (not patient-identifiable audit) |
 | Retry / resilience (optional) | Desirable | Desirable | SQS-backed retry for transient failures |
 
 ---
@@ -1010,8 +993,7 @@ The proxy then filters the Bundle entries:
 | R3 | Receiver suppliers do not implement an authorisation server capable of accepting NHS login ID tokens from APIM | Medium | High | Publish clear Receiver AuthZ spec early. Provide reference implementation or sandbox. Include in assurance requirements. | BaRS Architecture |
 | R4 | mTLS certificate change (new issuer from AWS) rejected by Receivers that validate cert subject/issuer | Medium | High | Publish new cert details well in advance. Dual-cert period during transition. Test with each Receiver in INT before cutover. | BaRS Run & Maintain |
 | R5 | NHS login ID token lifetime too short — tokens expire during APIM caching/exchange, causing auth failures | Low | Medium | Validate token lifetime assumptions with NHS login team. Implement proactive token refresh in APIM cache. | BaRS Architecture |
-| R6 | Splunk retirement timeline overtakes PFS delivery — no audit capability available during gap | Medium | Medium | Ensure CloudWatch audit logging is part of the new proxy MVP. Do not depend on Splunk for PFS audit. | BaRS Engineering |
-| R7 | Patient data exposure if token exchange logs or audit entries inadvertently capture NHS Number in non-redacted fields | Low | Critical | PII redaction built into audit logging by design. DPIA for new audit data. Security review of log pipeline before go-live. | IG / Security |
+| R6 | Patient data inadvertently captured in proxy operational logs (NHS Number in headers or log fields) | Low | High | Ensure proxy operational logging does not capture patient-identifiable data. Security review of log pipeline. | BaRS Engineering / Security |
 
 ### Assumptions
 
@@ -1030,7 +1012,7 @@ The proxy then filters the Bundle entries:
 |----|-------|--------|--------|--------|-------|
 | I1 | No decision yet on `NHSD-End-User-Organisation` header handling for PFS (Option A/B/C/D) | Open | Blocks detailed Receiver onboarding guidance | Confirm with NHS API Platform team and BaRS Core spec owners | BaRS Architecture |
 | I2 | OAuth scope model for patient-facing BaRS not yet defined or agreed | Open | Blocks PFA development and Receiver AuthZ implementation | Define scope model; agree with NHS login and APIM teams | BaRS Architecture |
-| I3 | No DPIA exists for patient-level audit logging in the new proxy | Open | Cannot log patient NHS Number until IG approval is obtained | Commission DPIA for PFS audit data; engage IG team early | IG Lead |
+| I3 | Receiver audit requirements not yet specified in the BaRS standard | Open | Receivers need guidance on what audit records to maintain for patient-facing interactions | Define Receiver audit requirements as part of PFS onboarding/assurance guidance | BaRS Architecture |
 | I4 | Receiver AuthZ server contract not yet specified | Open | Receivers cannot begin implementation | Produce Receiver AuthZ contract spec: input token format, required claim validation, APIM-to-Receiver authentication method, grant type, and Receiver access token format/claims/lifetime | BaRS Architecture |
 | I5 | Delegated/proxy access model (parent booking for child) not defined | Open | Cannot support family/carer booking scenarios at launch | Defer to post-MVP or align with National Proxy Service timeline | BaRS Programme |
 
@@ -1043,5 +1025,5 @@ The proxy then filters the Bundle entries:
 | D3 | NHS login support for PFS at P9 level with required claims | NHS login team | Patient authentication | Available (existing) | Low risk — NHS login already supports P9. Confirm claims include NHS Number. |
 | D4 | APIM team to route PFS traffic to new backend (if replatformed) | APIM / API Platform team | PFS go-live | Not started | Delay — APIM team capacity is a constraint; engage early |
 | D5 | Receiver suppliers implement AuthZ servers and update firewall rules | Each Receiver supplier | PFS traffic can reach Receivers | Not started | Delay — phased rollout; early suppliers first. Cannot force all suppliers to implement simultaneously. |
-| D6 | DPIA approval for patient-level audit logging | IG team | Audit logging can include NHS Number | Not started | Delay — PFS can launch without patient-level audit but would not meet regulatory expectations |
+| D6 | Receiver suppliers must implement audit logging for patient-facing interactions | Each Receiver supplier | Receivers meet GDPR obligations for patient data access | Not started | Low risk — this is a Receiver responsibility; guidance to be provided as part of onboarding |
 | D7 | BaRS Core spec update to accommodate patient-facing header semantics | BaRS Standards team | Receiver guidance is unambiguous | Not started | Workaround available (Option D) but long-term clarity requires spec change |
