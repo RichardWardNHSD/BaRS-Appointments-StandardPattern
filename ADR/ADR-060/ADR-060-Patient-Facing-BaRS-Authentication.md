@@ -58,8 +58,7 @@ The core BaRS Appointment Management API is built and in production. The missing
 | A2 | APIM will continue to be the public-facing entry point even after the proxy moves to AWS (APIM routes to the new proxy backend)                                                            | If APIM is bypassed, the PFA would need to call AWS directly — different onboarding model, different TLS, different domain     |
 | A3 | Receivers will implement a standards-based OAuth2 authorisation server that accepts NHS login ID tokens from APIM                                                                          | If Receivers use proprietary auth mechanisms, bespoke integrations are needed per supplier                                      |
 | A4 | The Endpoint Catalogue will support`connectionType` and `payloadType` filtering to distinguish auth endpoints from API endpoints. If EPC is not ready, an interim workaround will be used. | If EPC is delayed and no workaround is in place, PFS cannot resolve Receiver auth endpoints — blocking token exchange entirely |
-| A5 | The`NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers without requiring spec changes                                         | If Receivers reject this value, a spec change or per-Receiver negotiation is needed                                             |
-| A6 | Token caching within APIM/the new proxy is acceptable from a security and IG perspective                                                                                                   | If tokens must not be cached, every request requires a fresh token exchange — significant latency                              |
+| A5 | The `NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers without requiring spec changes                                         | If Receivers reject this value, a spec change or per-Receiver negotiation is needed                                             |
 
 ### 2.2.2 Drivers
 
@@ -189,10 +188,6 @@ graph TD
         P[Patient] --> PFA[Patient Facing App<br/>NHS App]
     end
 
-    subgraph APIMLayer["APIM Layer"]
-        PFA -->|"APIM access token"| APIM[APIM Gateway]
-    end
-
     subgraph AuthLayer["Authentication"]
         PFA -->|"Credentials"| NL[NHS Login]
         NL -->|"ID Token"| PFA
@@ -200,11 +195,18 @@ graph TD
         APIM_AUTH -->|"APIM Token"| PFA
     end
 
-    subgraph AWSLayer["AWS Proxy Layer"]
-        APIM -->|"Route"| APIGW[API Gateway]
+    subgraph APIMLayer["APIM Layer"]
+        PFA -->|"APIM access token"| APIM[APIM Gateway]
+        APIM -->|"Route to AWS"| APIGW[API Gateway]
+        APIM -->|"EPC requests"| EPC_PROXY[Apigee EPC Proxy]
+    end
+
+    subgraph AWSProxyLayer["AWS Proxy Layer (BaRS Account)"]
         APIGW --> LAMBDA[Proxy Lambda<br/>Token Exchange + Routing]
-        LAMBDA --> CACHE[Token Cache<br/>DynamoDB TTL]
-        LAMBDA --> EPC[Endpoint Catalogue<br/>Dynamic Resolution]
+    end
+
+    subgraph AWSEPCLayer["AWS (EPC Account)"]
+        EPC_PROXY -->|"Endpoint lookup"| EPC[Endpoint Catalogue<br/>Service]
     end
 
     subgraph ReceiverLayer["Receiver Layer"]
@@ -221,10 +223,10 @@ sequenceDiagram
     participant NHSLogin as NHS Login
     participant PFA as Patient Facing App<br/>(NHS App)
     participant APIMAuth as APIM Authorisation<br/>Service
-    participant APIM as APIM Gateway<br/>(routes to AWS)
+    participant APIM as APIM Gateway
     participant AWSProxy as AWS BaRS Proxy<br/>(API Gateway + Lambda)
-    participant TokenCache as Token Cache<br/>(DynamoDB / In-Memory)
-    participant EPC as Endpoint Catalogue<br/>Service
+    participant EPCProxy as Apigee EPC Proxy
+    participant EPC as Endpoint Catalogue<br/>(AWS — separate account)
     participant ReceiverAuth as Receiver AuthZ<br/>Server
     participant ReceiverAPI as Receiver API
 
@@ -240,19 +242,15 @@ sequenceDiagram
     PFA->>APIM: API call + APIM access token
     APIM->>AWSProxy: Route to AWS backend
 
-    Note over AWSProxy,EPC: 4. Dynamic endpoint resolution
-    AWSProxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|{id}<br/>&connectionType=oauth2-token-exchange
-    EPC-->>AWSProxy: Auth endpoint URL
-    AWSProxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|{id}<br/>&connectionType=hl7-fhir-rest
-    EPC-->>AWSProxy: API endpoint URL
+    Note over AWSProxy,EPC: 4. Endpoint resolution via APIM layer
+    AWSProxy->>EPCProxy: Lookup endpoints for target service
+    EPCProxy->>EPC: GET /Endpoint?HealthcareService.Identifier=dos|{id}
+    EPC-->>EPCProxy: Auth endpoint + API endpoint
+    EPCProxy-->>AWSProxy: Receiver Auth URL + Receiver API URL
 
-    Note over AWSProxy,ReceiverAuth: 5. Token exchange (with caching)
-    AWSProxy->>TokenCache: Check for cached Receiver token
-    alt Token not cached
-        AWSProxy->>ReceiverAuth: NHS login ID token + client credentials
-        ReceiverAuth-->>AWSProxy: Receiver access token
-        AWSProxy->>TokenCache: Cache token (TTL)
-    end
+    Note over AWSProxy,ReceiverAuth: 5. Token exchange
+    AWSProxy->>ReceiverAuth: NHS login ID token + client credentials
+    ReceiverAuth-->>AWSProxy: Receiver access token
 
     Note over AWSProxy,ReceiverAPI: 6. Proxied API call
     AWSProxy->>ReceiverAPI: API request + Receiver access token
@@ -264,7 +262,7 @@ sequenceDiagram
 
 | Criterion                  | Assessment                                                                        |
 | ----------------------------| -----------------------------------------------------------------------------------|
-| Security                   | Purpose-built for token exchange; native token caching                            |
+| Security                   | Purpose-built for token exchange                                                  |
 | Receiver burden            | Low — single trusted origin (APIM); same pattern as GP Connect PFS                |
 | Operational sustainability | Good — purpose-built on AWS with CloudWatch for operational logging               |
 | Scalability                | Good — dynamic endpoint resolution via EPC                                        |
