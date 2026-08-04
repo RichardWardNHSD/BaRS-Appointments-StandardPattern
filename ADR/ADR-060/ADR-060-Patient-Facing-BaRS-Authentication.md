@@ -1,5 +1,18 @@
 # ADR-060: Patient-Facing Authentication for BaRS Appointment Interactions
 
+## Overview
+
+This ADR records the decision on how patient-facing authentication will be introduced to the BaRS (Booking and Referral Standard) proxy to enable citizens to book, view, and cancel their own appointments directly through the NHS App.
+
+The objective is to establish an authentication and authorisation pattern that:
+
+- enables patients to authenticate as themselves via NHS login and act on their own record
+- reuses the proven separate authentication and authorisation pattern from GP Connect Patient Facing Services (PFS D6)
+- maintains APIM as a single trusted origin for Receiver systems
+- minimises Receiver integration burden
+- unlocks patient-facing capabilities across multiple NHS programmes (National Diagnostic Service, Self-Referral, Screening, Vaccination booking)
+- can be delivered incrementally, with an interim tactical solution on the existing Apigee proxy and a longer-term evolution to an AWS-based proxy
+
 ## Metadata
 
 
@@ -61,17 +74,17 @@ The core BaRS Appointment Management API is built and in production. The missing
 ### 2.2.3 Criteria
 
 
-| #  | Criterion                      | Description                                                                                                                                    |
-| ---- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| C1 | **Security**                   | Patient identity must be cryptographically verified; own-record-only access must be enforced; abuse prevention (rate limiting, bot prevention) |
-| C2 | **Standards compliance**       | Must follow established NHS patterns (NHS login separate auth, FHIR R4, BaRS specification)                                                    |
-| C3 | **Receiver burden**            | Minimise integration effort for Receiver suppliers; single trusted origin preferred                                                            |
-| C4 | **Operational sustainability** | Must support 12+ month audit retention; solution should be maintainable within existing platform capabilities                                   |
-| C5 | **Scalability**                | Must support the full estate of BaRS Receivers without per-supplier manual configuration                                                       |
-| C6 | **Delivery risk**              | Consider dependencies, team capacity, and phased delivery options                                                                              |
-| C7 | **Backwards compatibility**    | Must not break existing B2B BaRS flows                                                                                                         |
-| C8 | **Regulatory compliance**      | Must meet UK GDPR audit requirements (SAR responses, complaint investigation, accountability)                                                  |
-| C9 | **Strategic alignment**        | Should align with NHS England platform direction and the EPC programme                                                                         |
+| #   | Criterion                      | Description                                                                                                                                    |
+| -----| --------------------------------| ------------------------------------------------------------------------------------------------------------------------------------------------|
+| C1  | **Security**                   | Patient identity must be cryptographically verified; own-record-only access must be enforced; abuse prevention (rate limiting, bot prevention) |
+| C2  | **Standards compliance**       | Must follow established NHS patterns (NHS login separate auth, FHIR R4, BaRS specification)                                                    |
+| C3  | **Receiver burden**            | Minimise integration effort for Receiver suppliers; single trusted origin preferred                                                            |
+| C4  | **Operational sustainability** | Must support 12+ month audit retention; solution should be maintainable within existing platform capabilities                                  |
+| C5  | **Scalability**                | Must support the full estate of BaRS Receivers without per-supplier manual configuration                                                       |
+| C6  | **Delivery risk**              | Consider dependencies, team capacity, and phased delivery options                                                                              |
+| C7  | **Backwards compatibility**    | Must not break existing B2B BaRS flows                                                                                                         |
+| C8  | **Regulatory compliance**      | Must meet UK GDPR audit requirements (SAR responses, complaint investigation, accountability)                                                  |
+| C9  | **Strategic alignment**        | Should align with NHS England platform direction and the EPC programme                                                                         |
 
 ### 2.2.4 Options
 
