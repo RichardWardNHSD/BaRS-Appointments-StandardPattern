@@ -56,13 +56,13 @@ The core BaRS Appointment Management API is built and in production. The missing
 ### Assumptions
 
 
-| ID | Assumption                                                                                                                       | Impact if wrong                                                                     |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| A1 | NHS login will support P9 (high) identity verification for PFS patients at scale                                                 | PFS cannot launch — identity assurance level is a hard requirement                 |
-| A2 | APIM will continue to be the public-facing entry point for BaRS                                                                  | If APIM is bypassed, a different onboarding model is needed                         |
-| A3 | Receivers will implement a standards-based OAuth2 authorisation server that accepts NHS login ID tokens from APIM                | If Receivers use proprietary auth, bespoke integrations are needed per supplier     |
-| A4 | The Endpoint Catalogue will support`connectionType` and `payloadType` filtering to distinguish auth endpoints from API endpoints | If not, an alternative discovery mechanism is needed                                |
-| A5 | The`NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers              | If Receivers reject this value, a spec change or per-Receiver negotiation is needed |
+| ID  | Assumption                                                                                                                       | Impact if wrong                                                                     |
+| -----| ----------------------------------------------------------------------------------------------------------------------------------| -------------------------------------------------------------------------------------|
+| A1  | NHS login will support P9 (high) identity verification for PFS patients at scale                                                 | PFS cannot launch — identity assurance level is a hard requirement                  |
+| A2  | APIM will continue to be the public-facing entry point for BaRS                                                                  | If APIM is bypassed, a different onboarding model is needed                         |
+| A3  | Receivers will implement a standards-based OAuth2 authorisation server that accepts NHS login ID tokens from APIM                | If Receivers use proprietary auth, bespoke integrations are needed per supplier     |
+| A4  | The Endpoint Catalogue will support`connectionType` and `payloadType` filtering to distinguish auth endpoints from API endpoints | If not, an alternative discovery mechanism is needed                                |
+| A5  | The`NHSD-End-User-Organisation` header will be accepted with the APIM platform ODS code (X26) by existing Receivers              | If Receivers reject this value, a spec change or per-Receiver negotiation is needed |
 
 ### Drivers
 
