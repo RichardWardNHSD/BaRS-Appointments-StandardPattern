@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant Sender as B2B Sender<br/>(Healthcare System)
+    participant Apigee as Apigee BaRS Proxy
+    participant SF as Shared Flow<br/>(PreFlow)
+    participant Receiver as Receiver API
+
+    Sender->>Apigee: POST /$process-message<br/>Authorization: Bearer (app token)<br/>NHSD-End-User-Organisation: (present)
+    Apigee->>Apigee: VerifyAccessToken (application-restricted)
+    Apigee->>SF: Enter shared flow PreFlow
+    SF->>SF: DecodeJWT → set auth.mode = "b2b"
+    SF->>SF: Condition: auth.mode="b2b" AND header=null → FALSE
+    Note over SF: Header present → no fault, continue
+    SF-->>Apigee: Proceed
+    Apigee->>Receiver: Proxied request (+ NHSD-End-User-Organisation)
+    Receiver-->>Apigee: 200 OK
+    Apigee-->>Sender: 200 OK

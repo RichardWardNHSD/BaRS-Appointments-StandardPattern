@@ -1,0 +1,10 @@
+flowchart TD
+    A[Inbound request] --> B[Verify access token]
+    B --> C{DecodeJWT:<br/>determine auth.mode}
+    C -->|"claim/scope → b2b"| D{Header<br/>present?}
+    C -->|"claim/scope → pfs"| E[Skip header rule]
+    D -->|Yes| F[Continue — proxy to Receiver]
+    D -->|No| G[RaiseFault<br/>RF-Missing-EndUserOrg-Header<br/>400 OperationOutcome]
+    E --> H[Continue — EPC lookup +<br/>token exchange + proxy]
+    F --> I[Receiver API]
+    H --> I

@@ -82,6 +82,8 @@ sequenceDiagram
     Apigee-->>Sender: 200 OK
 ```
 
+![B2B request with the NHSD-End-User-Organisation header present — the proxy determines auth.mode is b2b, the conditional check passes, and the request is proxied to the Receiver with the header forwarded](./diagrams/4.1-b2b-header-present.png)
+
 ### 4.2 B2B request — header missing (rejected)
 
 ```mermaid
@@ -100,6 +102,8 @@ sequenceDiagram
     Apigee-->>Sender: 400 Bad Request<br/>OperationOutcome (distinct error code)
     Note over Sender,Apigee: Request never reaches the Receiver
 ```
+
+![B2B request with the NHSD-End-User-Organisation header missing — the proxy determines auth.mode is b2b, the conditional check fires a RaiseFault returning a 400 OperationOutcome, and the request never reaches the Receiver](./diagrams/4.2-b2b-header-missing.png)
 
 ### 4.3 Patient-facing (PFS) request — header absent (accepted)
 
@@ -128,6 +132,8 @@ sequenceDiagram
     Apigee-->>PFA: 200 OK
 ```
 
+![Patient-facing request with no NHSD-End-User-Organisation header — the proxy determines auth.mode is pfs so the header rule does not apply, then performs EPC endpoint lookup, token exchange with the Receiver AuthZ server, and proxies the request without the header](./diagrams/4.3-pfs-header-absent.png)
+
 ### 4.4 Decision flow (both modes)
 
 ```mermaid
@@ -142,6 +148,8 @@ flowchart TD
     F --> I[Receiver API]
     H --> I
 ```
+
+![Decision flowchart covering both modes — after verifying the access token and decoding it to determine auth.mode, b2b requests are checked for the header (rejected with a RaiseFault if absent, proxied if present) while pfs requests skip the header rule and proceed to EPC lookup, token exchange, and proxying; both paths converge on the Receiver API](./diagrams/4.4-decision-flow.png)
 
 ---
 

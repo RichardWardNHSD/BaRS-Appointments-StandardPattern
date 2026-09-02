@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant PFA as Patient Facing App<br/>(NHS App)
+    participant Apigee as Apigee BaRS Proxy
+    participant SF as Shared Flow<br/>(PreFlow)
+    participant EPC as Endpoint Catalogue<br/>(via Apigee EPC proxy)
+    participant RecAuth as Receiver AuthZ Server
+    participant Receiver as Receiver API
+
+    PFA->>Apigee: API call<br/>Authorization: Bearer (APIM user token)<br/>NHSD-Target-Identifier: (HealthcareService ID)<br/>(no NHSD-End-User-Organisation)
+    Apigee->>Apigee: VerifyAccessToken (user-restricted / NHS login)
+    Apigee->>SF: Enter shared flow PreFlow
+    SF->>SF: DecodeJWT → set auth.mode = "pfs"
+    SF->>SF: Condition: auth.mode="b2b" AND header=null → FALSE
+    Note over SF: auth.mode is "pfs" → rule does not apply, continue
+    SF-->>Apigee: Proceed
+    Apigee->>EPC: Resolve auth + API endpoints
+    EPC-->>Apigee: Receiver Auth URL + API URL
+    Apigee->>RecAuth: Token exchange (NHS login ID token)
+    RecAuth-->>Apigee: Receiver access token
+    Apigee->>Receiver: Proxied request (+ Receiver token, no NHSD-End-User-Organisation)
+    Receiver-->>Apigee: 200 OK
+    Apigee-->>PFA: 200 OK

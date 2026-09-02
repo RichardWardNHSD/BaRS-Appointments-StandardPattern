@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant Sender as B2B Sender<br/>(Healthcare System)
+    participant Apigee as Apigee BaRS Proxy
+    participant SF as Shared Flow<br/>(PreFlow)
+
+    Sender->>Apigee: POST /$process-message<br/>Authorization: Bearer (app token)<br/>(no NHSD-End-User-Organisation)
+    Apigee->>Apigee: VerifyAccessToken (application-restricted)
+    Apigee->>SF: Enter shared flow PreFlow
+    SF->>SF: DecodeJWT → set auth.mode = "b2b"
+    SF->>SF: Condition: auth.mode="b2b" AND header=null → TRUE
+    SF->>SF: RaiseFault RF-Missing-EndUserOrg-Header
+    SF-->>Apigee: Fault raised
+    Apigee-->>Sender: 400 Bad Request<br/>OperationOutcome (distinct error code)
+    Note over Sender,Apigee: Request never reaches the Receiver
