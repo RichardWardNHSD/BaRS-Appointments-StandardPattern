@@ -176,6 +176,8 @@ In B2B BaRS, the `NHSD-End-User-Organisation` header is mandatory on every reque
 
 **Recommendation: Option C** — make `NHSD-End-User-Organisation` **optional for patient-facing flows and mandatory for B2B**, enforced conditionally at the Apigee proxy layer.
 
+> **Detailed design:** A full technical design for Option C — including sequence diagrams, the `auth.mode` detection approach, Apigee policy implementation (`DecodeJWT`, conditional `RaiseFault`), edge cases, Receiver-side impact, and test scenarios — is in the companion sub-page: [ADR-060c — Option C: Conditional `NHSD-End-User-Organisation` Enforcement](./ADR-060c-OptionC-Conditional-Header-Enforcement.md).
+
 **Why Option C over Option D:**
 
 - **Semantically honest.** A patient-initiated request genuinely has no sending organisation. Injecting a synthetic ODS code (Option D) asserts an organisational sender that doesn't exist, which can mislead Receiver authorisation logic, address masking, and audit.
@@ -291,6 +293,7 @@ The < 500ms p95 target for the token exchange step is a **proposed BaRS-specific
 
 ### Related artefacts
 
+- [ADR-060c — Option C: Conditional `NHSD-End-User-Organisation` Enforcement](./ADR-060c-OptionC-Conditional-Header-Enforcement.md) — detailed design and Apigee implementation for the recommended header approach
 - [Patient-Facing BaRS — Technical Paper (WIP)](https://github.com/RichardWardNHSD/BaRS-Appointments-StandardPattern/blob/main/08-patient-facing-nhs-identity.md)
 - [PFS D6 — Auth Token Exchange](https://nhsd-confluence.digital.nhs.uk/display/DCA/PFS+D6+-+Auth+Token+Exchange)
 - [PFS D5 — Authentication](https://nhsd-confluence.digital.nhs.uk/display/DCA/PFS+D5+-+Authentication)
